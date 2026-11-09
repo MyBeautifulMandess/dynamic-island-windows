@@ -58,9 +58,15 @@ public sealed class MediaService : IDisposable
     }
 
     private async void Manager_CurrentSessionChanged(GlobalSystemMediaTransportControlsSessionManager sender,
-        CurrentSessionChangedEventArgs args) => await AttachCurrentAsync();
+        CurrentSessionChangedEventArgs args)
+    {
+        try { await AttachCurrentAsync(); } catch { }
+    }
 
-    private async void Session_Changed(GlobalSystemMediaTransportControlsSession sender, object args) => await RefreshAsync();
+    private async void Session_Changed(GlobalSystemMediaTransportControlsSession sender, object args)
+    {
+        try { await RefreshAsync(); } catch { }
+    }
 
     private async Task RefreshAsync()
     {
@@ -142,13 +148,12 @@ public sealed class MediaService : IDisposable
 
     private void DetachSession()
     {
-        if (_session is not null)
-        {
-            _session.MediaPropertiesChanged -= Session_Changed;
-            _session.PlaybackInfoChanged -= Session_Changed;
-            _session.TimelinePropertiesChanged -= Session_Changed;
-        }
+        var session = _session;
         _session = null;
+        if (session is null) return;
+        try { session.MediaPropertiesChanged -= Session_Changed; } catch { }
+        try { session.PlaybackInfoChanged -= Session_Changed; } catch { }
+        try { session.TimelinePropertiesChanged -= Session_Changed; } catch { }
     }
 
     public void Dispose()

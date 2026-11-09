@@ -7,17 +7,21 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>DynamicIsland</AssemblyName>
     <RootNamespace>DynamicIsland</RootNamespace>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Product>Dynamic Island for Windows</Product>
     <Description>Dynamic Island-style control center for Windows</Description>
     <Authors>MyBeautifulMandess</Authors>
     <RepositoryUrl>https://github.com/MyBeautifulMandess/dynamic-island-windows</RepositoryUrl>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <DebugType>embedded</DebugType>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\app.ico" />
   </ItemGroup>
 </Project>

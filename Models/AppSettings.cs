@@ -20,6 +20,18 @@ public sealed class AppSettings : ObservableObject
     private string _weatherKey = "";
     private string _weatherCity = "Moscow";
     private string _weatherLanguage = "ru";
+    private string _panelOrder = PanelCatalog.DefaultOrder;
+    private string _hiddenPanels = "";
+    private bool _showWeatherInPill = true;
+    private string _quickFolder = "";
+    private string _notes = "";
+    private bool _reminderSound = true;
+    private int _snoozeMinutes = 10;
+    private string _reminderTone = "soft";
+    private string _aiBaseUrl = "https://routerai.ru/api/v1";
+    private string _aiProvider = "RouterAI";
+    private string _aiKey = "";
+    private string _aiModel = "openai/gpt-chat-latest";
 
     public double IslandWidth { get => _islandWidth; set => Set(ref _islandWidth, Math.Clamp(value, 210, 420)); }
     public double IslandHeight { get => _islandHeight; set => Set(ref _islandHeight, Math.Clamp(value, 34, 58)); }
@@ -39,4 +51,16 @@ public sealed class AppSettings : ObservableObject
     public string WeatherKey { get => _weatherKey; set => Set(ref _weatherKey, value); }
     public string WeatherCity { get => _weatherCity; set => Set(ref _weatherCity, value); }
     public string WeatherLanguage { get => _weatherLanguage; set => Set(ref _weatherLanguage, value); }
+    public string PanelOrder { get => _panelOrder; set => Set(ref _panelOrder, value); }
+    public string HiddenPanels { get => _hiddenPanels; set => Set(ref _hiddenPanels, value); }
+    public bool ShowWeatherInPill { get => _showWeatherInPill; set => Set(ref _showWeatherInPill, value); }
+    public string QuickFolder { get => _quickFolder; set => Set(ref _quickFolder, value); }
+    public string Notes { get => _notes; set => Set(ref _notes, value); }
+    public bool ReminderSound { get => _reminderSound; set => Set(ref _reminderSound, value); }
+    public int SnoozeMinutes { get => _snoozeMinutes; set => Set(ref _snoozeMinutes, Math.Clamp(value, 1, 240)); }
+    public string ReminderTone { get => _reminderTone; set => Set(ref _reminderTone, value); }
+    public string AiBaseUrl { get => _aiBaseUrl; set => Set(ref _aiBaseUrl, value); }
+    public string AiProvider { get => _aiProvider; set => Set(ref _aiProvider, value); }
+    public string AiKey { get => _aiKey; set => Set(ref _aiKey, value); }
+    public string AiModel { get => _aiModel; set => Set(ref _aiModel, value); }
 }

@@ -1,5 +1,5 @@
 #define MyAppName "Dynamic Island"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "MyBeautifulMandess"
 #define MyAppUrl "https://github.com/MyBeautifulMandess/dynamic-island-windows"
 #define MyAppExeName "DynamicIsland.exe"
@@ -28,6 +28,12 @@ AppMutex=Local\DynamicIsland.SingleInstance
 CloseApplications=yes
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}
+SetupIconFile=..\Assets\app.ico
+VersionInfoVersion={#MyAppVersion}
+VersionInfoProductName={#MyAppName}
+VersionInfoProductVersion={#MyAppVersion}
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription=Установщик {#MyAppName}
 
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"

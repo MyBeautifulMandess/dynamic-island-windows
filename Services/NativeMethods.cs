@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace DynamicIsland.Services;
 
@@ -7,6 +8,10 @@ internal static class NativeMethods
     internal const int WmClipboardUpdate = 0x031D;
     internal const int WmHotKey = 0x0312;
     internal const int WmDpiChanged = 0x02E0;
+    internal const int WmTray = 0x8001;
+    internal const int WmLButtonUp = 0x0202;
+    internal const int WmLButtonDblClk = 0x0203;
+    internal const int WmRButtonUp = 0x0205;
     internal const uint MonDefaultToNearest = 2;
     internal const int SwpNoSize = 0x0001;
     internal const int SwpNoMove = 0x0002;
@@ -75,8 +80,39 @@ internal static class NativeMethods
         public IntPtr ExtraInfo;
     }
 
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct NotifyIconData
+    {
+        public int Size;
+        public IntPtr Window;
+        public uint Id;
+        public uint Flags;
+        public uint CallbackMessage;
+        public IntPtr Icon;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Tip;
+        public uint State;
+        public uint StateMask;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string Info;
+        public uint TimeoutOrVersion;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] public string InfoTitle;
+        public uint InfoFlags;
+        public Guid GuidItem;
+        public IntPtr BalloonIcon;
+    }
+
     [DllImport("user32.dll")] internal static extern bool GetCursorPos(out Point point);
     [DllImport("user32.dll")] internal static extern IntPtr MonitorFromPoint(Point point, uint flags);
+    [DllImport("user32.dll")] internal static extern bool GetWindowRect(IntPtr window, out Rect rect);
+    [DllImport("user32.dll", SetLastError = true)] internal static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] internal static extern int GetClassName(IntPtr window, StringBuilder name, int length);
+    [DllImport("user32.dll")] internal static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")] internal static extern bool IsZoomed(IntPtr window);
+    [DllImport("user32.dll")] internal static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
+    [DllImport("dwmapi.dll")] internal static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out Rect value, int size);
+    [DllImport("user32.dll")] internal static extern bool DestroyIcon(IntPtr icon);
+    [DllImport("shell32.dll")] internal static extern int SHQueryUserNotificationState(out int state);
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)] internal static extern uint ExtractIconEx(string file, int index, out IntPtr large, out IntPtr small, uint count);
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)] internal static extern bool Shell_NotifyIcon(uint message, ref NotifyIconData data);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] internal static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
     [DllImport("user32.dll")] internal static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] internal static extern bool SetForegroundWindow(IntPtr window);
@@ -95,6 +131,43 @@ internal static class NativeMethods
         var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
         GetMonitorInfo(MonitorFromPoint(point, MonDefaultToNearest), ref info);
         return info;
+    }
+
+    internal static bool IsFullScreenActive()
+    {
+        try
+        {
+            if (SHQueryUserNotificationState(out var state) == 0 && state is 2 or 3 or 4) return true;
+        }
+        catch { }
+        var foreground = GetForegroundWindow();
+        if (foreground == IntPtr.Zero || !IsWindowVisible(foreground)) return false;
+        var name = new StringBuilder(64);
+        if (GetClassName(foreground, name, name.Capacity) > 0)
+        {
+            var cls = name.ToString();
+            if (cls is "Shell_TrayWnd" or "Progman" or "WorkerW" or "Shell_SecondaryTrayWnd") return false;
+        }
+        if (IsZoomed(foreground)) return false;
+        if (!GetVisibleBounds(foreground, out var bounds)) return false;
+        var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (!GetMonitorInfo(MonitorFromWindow(foreground, MonDefaultToNearest), ref info)) return false;
+        var target = info.Monitor;
+        return bounds.Left <= target.Left + 1 && bounds.Top <= target.Top + 1 &&
+               bounds.Right >= target.Right - 1 && bounds.Bottom >= target.Bottom - 1;
+    }
+
+    private static bool GetVisibleBounds(IntPtr window, out Rect bounds)
+    {
+        const int extendedFrameBounds = 9;
+        if (DwmGetWindowAttribute(window, extendedFrameBounds, out bounds, Marshal.SizeOf<Rect>()) == 0) return true;
+        return GetWindowRect(window, out bounds);
+    }
+
+    internal static void AssertTopmost(IntPtr window)
+    {
+        if (window == IntPtr.Zero) return;
+        SetWindowPos(window, new IntPtr(-1), 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
     }
 
     internal static void SendPaste()

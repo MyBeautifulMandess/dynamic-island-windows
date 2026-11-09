@@ -24,6 +24,14 @@ public sealed class SettingsService
                 var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(_path)) ?? new AppSettings();
                 settings.RouterAiKey = SecretProtector.Unprotect(settings.RouterAiKey);
                 settings.WeatherKey = SecretProtector.Unprotect(settings.WeatherKey);
+                settings.AiKey = SecretProtector.Unprotect(settings.AiKey);
+                if (string.IsNullOrWhiteSpace(settings.AiKey) && !string.IsNullOrWhiteSpace(settings.RouterAiKey))
+                {
+                    settings.AiKey = settings.RouterAiKey;
+                    settings.AiModel = settings.RouterAiModel;
+                    settings.AiBaseUrl = "https://routerai.ru/api/v1";
+                    settings.AiProvider = "RouterAI";
+                }
                 return settings;
             }
         }
@@ -36,6 +44,7 @@ public sealed class SettingsService
         var snapshot = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings)) ?? new AppSettings();
         snapshot.RouterAiKey = SecretProtector.Protect(snapshot.RouterAiKey);
         snapshot.WeatherKey = SecretProtector.Protect(snapshot.WeatherKey);
+        snapshot.AiKey = SecretProtector.Protect(snapshot.AiKey);
         var temp = _path + ".tmp";
         File.WriteAllText(temp, JsonSerializer.Serialize(snapshot, _json));
         File.Move(temp, _path, true);
