@@ -1,0 +1,27 @@
+# Сборка
+bin/
+obj/
+out/
+publish/
+
+# Visual Studio и Rider
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# VS Code
+.vscode/
+
+# Тесты и анализ
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+# Локальные файлы
+*.log
+*.tmp
+*.bak
