@@ -17,7 +17,7 @@
                     </Grid.ColumnDefinitions>
                     <Button Style="{StaticResource IconButton}" Content="&#xE768;" ToolTip="Медиа" Click="CompactMedia_Click" />
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Border Width="7" Height="7" CornerRadius="4" Background="{StaticResource AccentBrush}" Margin="0,0,8,0" />
+                        <Border Width="7" Height="7" CornerRadius="4" Background="{DynamicResource AccentBrush}" Margin="0,0,8,0" />
                         <TextBlock x:Name="CompactLabel" Text="Dynamic Island" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="NoWrap" />
                         <TextBlock x:Name="CompactTrack" Margin="8,0,0,0" FontSize="11" Foreground="{StaticResource MutedBrush}"
                                    TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" MaxWidth="145" VerticalAlignment="Center" />
@@ -32,7 +32,7 @@
                     <Grid.RowDefinitions><RowDefinition Height="50" /><RowDefinition Height="*" /><RowDefinition Height="28" /></Grid.RowDefinitions>
                     <Grid Margin="15,5,9,0">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <Border Width="8" Height="8" CornerRadius="4" Background="{StaticResource AccentBrush}" Margin="0,0,10,0" />
+                            <Border Width="8" Height="8" CornerRadius="4" Background="{DynamicResource AccentBrush}" Margin="0,0,10,0" />
                             <TextBlock Text="Dynamic Island" FontWeight="SemiBold" FontSize="14" />
                             <TextBlock x:Name="HeaderContext" Text="  /  Центр" Foreground="{StaticResource MutedBrush}" FontSize="12" />
                         </StackPanel>
@@ -93,7 +93,7 @@
                                         <ItemsControl.ItemTemplate><DataTemplate>
                                             <Border Background="{StaticResource CardBrush}" CornerRadius="10" Padding="11,8" Margin="0,0,0,6">
                                                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="30" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                                    <Border Background="{StaticResource AccentBrush}" Width="25" Height="25" CornerRadius="7" VerticalAlignment="Top"><TextBlock Text="{Binding Initial}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" /></Border>
+                                                    <Border Background="{DynamicResource AccentBrush}" Width="25" Height="25" CornerRadius="7" VerticalAlignment="Top"><TextBlock Text="{Binding Initial}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" /></Border>
                                                     <StackPanel Grid.Column="1"><TextBlock FontSize="11" Foreground="{StaticResource MutedBrush}"><Run Text="{Binding AppName, Mode=OneWay}" /><Run Text="  ·  " /><Run Text="{Binding Time, Mode=OneWay}" /></TextBlock><TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxHeight="20" /><TextBlock Text="{Binding Body}" Foreground="{StaticResource MutedBrush}" MaxHeight="32" TextTrimming="CharacterEllipsis" /></StackPanel>
                                                 </Grid>
                                             </Border>
@@ -115,7 +115,7 @@
                                     <Grid><TextBlock Text="{Binding Media.PositionText}" FontSize="11" Foreground="{StaticResource MutedBrush}" /><TextBlock Text="{Binding Media.DurationText}" FontSize="11" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Right" /></Grid>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,14,0,0">
                                         <Button Style="{StaticResource IconButton}" Content="&#xE892;" Width="54" Height="46" FontSize="22" Click="Previous_Click" />
-                                        <Button Style="{StaticResource IconButton}" Content="{Binding Media.PlayPauseGlyph}" Width="64" Height="50" FontSize="26" Background="{StaticResource AccentBrush}" Click="PlayPause_Click" />
+                                        <Button Style="{StaticResource IconButton}" Content="{Binding Media.PlayPauseGlyph}" Width="64" Height="50" FontSize="26" Background="{DynamicResource AccentBrush}" Click="PlayPause_Click" />
                                         <Button Style="{StaticResource IconButton}" Content="&#xE893;" Width="54" Height="46" FontSize="22" Click="Next_Click" />
                                     </StackPanel>
                                 </StackPanel>
@@ -171,7 +171,7 @@
                                 <Grid><TextBlock Text="Недавние загрузки" FontSize="22" FontWeight="SemiBold" /><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="Обновить" Click="RefreshFiles_Click" /><Button Content="Папка" Click="OpenDownloads_Click" /></StackPanel></Grid>
                                 <ScrollViewer Grid.Row="1" Margin="0,12,0,0"><ItemsControl ItemsSource="{Binding Downloads}"><ItemsControl.ItemTemplate><DataTemplate>
                                     <Border Background="{StaticResource CardBrush}" CornerRadius="11" Margin="0,0,0,7" Padding="6"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="48" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                        <Border Width="38" Height="38" CornerRadius="9" Background="{StaticResource AccentBrush}" Margin="5,0"><TextBlock Text="{Binding Extension}" FontSize="9" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                                        <Border Width="38" Height="38" CornerRadius="9" Background="{DynamicResource AccentBrush}" Margin="5,0"><TextBlock Text="{Binding Extension}" FontSize="9" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" /><TextBlock Text="{Binding Details}" FontSize="11" Foreground="{StaticResource MutedBrush}" /></StackPanel>
                                         <StackPanel Grid.Column="2" Orientation="Horizontal"><Button Style="{StaticResource IconButton}" Content="&#xE8A7;" Tag="{Binding}" Click="OpenFile_Click" ToolTip="Открыть" /><Button Style="{StaticResource IconButton}" Content="&#xE838;" Tag="{Binding}" Click="RevealFile_Click" ToolTip="Показать в папке" /></StackPanel>
                                     </Grid></Border>
@@ -230,7 +230,7 @@
 
                 <Button x:Name="ToastPanel" Visibility="Collapsed" Background="Transparent" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Padding="20,16" Click="Toast_Click">
                     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="45" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                        <Border Width="38" Height="38" CornerRadius="11" Background="{StaticResource AccentBrush}" VerticalAlignment="Top"><TextBlock x:Name="ToastInitial" Text="•" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                        <Border Width="38" Height="38" CornerRadius="11" Background="{DynamicResource AccentBrush}" VerticalAlignment="Top"><TextBlock x:Name="ToastInitial" Text="•" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
                         <StackPanel Grid.Column="1"><Grid><TextBlock x:Name="ToastApp" Foreground="{StaticResource MutedBrush}" FontSize="11" /><TextBlock x:Name="ToastTime" Foreground="{StaticResource MutedBrush}" FontSize="11" HorizontalAlignment="Right" /></Grid><TextBlock x:Name="ToastTitle" FontWeight="SemiBold" FontSize="15" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" MaxHeight="23" /><TextBlock x:Name="ToastBody" Foreground="{StaticResource MutedBrush}" MaxHeight="42" TextTrimming="CharacterEllipsis" /></StackPanel>
                     </Grid>
                 </Button>

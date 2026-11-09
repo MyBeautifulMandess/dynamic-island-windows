@@ -602,7 +602,14 @@ public partial class MainWindow : Window
 
     private void ApplyAppearance()
     {
-        try { ((SolidColorBrush)Application.Current.Resources["AccentBrush"]).Color = (Color)ColorConverter.ConvertFromString(Settings.Accent); } catch { }
+        try
+        {
+            var color = (Color)ColorConverter.ConvertFromString(Settings.Accent);
+            var brush = new SolidColorBrush(color);
+            brush.Freeze();
+            Application.Current.Resources["AccentBrush"] = brush;
+        }
+        catch { }
         IslandBorder.Opacity = Settings.Opacity;
         if (_expanded)
         {
