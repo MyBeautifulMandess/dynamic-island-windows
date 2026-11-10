@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Media;
 using System.Windows;
 using System.Windows.Controls;
@@ -183,6 +184,7 @@ public partial class MainWindow : Window
         _clockTimer.Start();
         if (!string.IsNullOrWhiteSpace(Settings.WeatherKey)) _weatherTimer.Start();
         _ready = true;
+        ApplyStartup();
         UpdateRadioStates();
         UpdateSystemControls();
         Diagnostics.Log($"Window_Loaded: hot corner={Settings.HotCornerEnabled}, fullscreen={NativeMethods.IsFullScreenActive()}");
@@ -1446,13 +1448,31 @@ public partial class MainWindow : Window
         PositionWindow();
     }
 
+    private static string? ResolveStartupTarget()
+    {
+        // Prefer the installed copy so that a development build launched from
+        // the repository cannot hijack autostart for the released install.
+        var installed = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Programs", "DynamicIsland", "DynamicIsland.exe");
+        if (File.Exists(installed)) return installed;
+        return Environment.ProcessPath;
+    }
+
     private void ApplyStartup()
     {
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
             if (key is null) return;
-            if (Settings.LaunchAtStartup && Environment.ProcessPath is { } path) key.SetValue("DynamicIsland", $"\"{path}\"");
+            if (Settings.LaunchAtStartup && ResolveStartupTarget() is { } path)
+            {
+                var target = $"\"{path}\"";
+                // Re-assert the current executable so a moved or rebuilt install
+                // never leaves autostart pointing at a stale build.
+                if (key.GetValue("DynamicIsland") as string != target)
+                    key.SetValue("DynamicIsland", target);
+            }
             else key.DeleteValue("DynamicIsland", false);
         }
         catch (Exception ex) { SystemStatus.Text = "Автозапуск: " + ex.Message; }
