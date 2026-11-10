@@ -124,6 +124,7 @@ internal static class NativeMethods
     [DllImport("kernel32.dll")] internal static extern bool GetSystemPowerStatus(out SystemPowerStatus status);
     [DllImport("user32.dll")] internal static extern IntPtr GetDesktopWindow();
     [DllImport("user32.dll")] internal static extern uint GetDpiForWindow(IntPtr window);
+    [DllImport("user32.dll")] internal static extern IntPtr GetShellWindow();
     [DllImport("shcore.dll")] internal static extern int GetDpiForMonitor(IntPtr monitor, uint dpiType, out uint dpiX, out uint dpiY);
 
     internal static MonitorInfo GetMonitor(Point point)
@@ -135,26 +136,46 @@ internal static class NativeMethods
 
     internal static bool IsFullScreenActive()
     {
-        try
-        {
-            if (SHQueryUserNotificationState(out var state) == 0 && state is 2 or 3 or 4) return true;
-        }
-        catch { }
         var foreground = GetForegroundWindow();
         if (foreground == IntPtr.Zero || !IsWindowVisible(foreground)) return false;
+
         var name = new StringBuilder(64);
         if (GetClassName(foreground, name, name.Capacity) > 0)
         {
             var cls = name.ToString();
             if (cls is "Shell_TrayWnd" or "Progman" or "WorkerW" or "Shell_SecondaryTrayWnd") return false;
+            if (cls.StartsWith("Windows.UI.Core.CoreWindow", StringComparison.Ordinal)) return false;
         }
-        if (IsZoomed(foreground)) return false;
+
+        if (foreground == GetShellWindow()) return false;
+
         if (!GetVisibleBounds(foreground, out var bounds)) return false;
         var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
-        if (!GetMonitorInfo(MonitorFromWindow(foreground, MonDefaultToNearest), ref info)) return false;
+        var monitor = MonitorFromWindow(foreground, MonDefaultToNearest);
+        if (!GetMonitorInfo(monitor, ref info)) return false;
+
         var target = info.Monitor;
-        return bounds.Left <= target.Left + 1 && bounds.Top <= target.Top + 1 &&
-               bounds.Right >= target.Right - 1 && bounds.Bottom >= target.Bottom - 1;
+        var width = target.Right - target.Left;
+        var height = target.Bottom - target.Top;
+        if (width <= 0 || height <= 0) return false;
+
+        var coveredWidth = bounds.Right - bounds.Left;
+        var coveredHeight = bounds.Bottom - bounds.Top;
+        if (coveredWidth <= 0 || coveredHeight <= 0) return false;
+
+        var fullWidth = bounds.Left <= target.Left + 2 && bounds.Right >= target.Right - 2;
+        var fullHeight = bounds.Top <= target.Top + 2 && bounds.Bottom >= target.Bottom - 2;
+        if (!fullWidth || !fullHeight) return false;
+
+        if (IsZoomed(foreground)) return false;
+
+        try
+        {
+            if (SHQueryUserNotificationState(out var state) == 0 && state is 2 or 3 or 4) return true;
+        }
+        catch { }
+
+        return true;
     }
 
     private static bool GetVisibleBounds(IntPtr window, out Rect bounds)

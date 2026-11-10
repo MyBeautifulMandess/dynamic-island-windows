@@ -6,7 +6,7 @@ namespace DynamicIsland.Services;
 
 public sealed class NotificationService : IDisposable
 {
-    private readonly UserNotificationListener _listener = UserNotificationListener.Current;
+    private UserNotificationListener? _listener;
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
     private readonly Dictionary<uint, NotificationItem> _items = new();
     private CancellationTokenSource? _pollCts;
@@ -20,6 +20,18 @@ public sealed class NotificationService : IDisposable
 
     public async Task InitializeAsync()
     {
+        try
+        {
+            _listener = UserNotificationListener.Current;
+        }
+        catch (Exception ex)
+        {
+            Status = "Слушатель уведомлений недоступен: " + ex.Message;
+            Diagnostics.Log("NotificationService: listener unavailable — " + ex.Message);
+            Changed?.Invoke([]);
+            return;
+        }
+
         try
         {
             var access = await _listener.RequestAccessAsync();
@@ -40,6 +52,7 @@ public sealed class NotificationService : IDisposable
         catch (Exception ex)
         {
             Status = "Недоступно: " + ex.Message;
+            Diagnostics.Log("NotificationService: init failed — " + ex.Message);
         }
     }
 
@@ -66,6 +79,7 @@ public sealed class NotificationService : IDisposable
 
     public async Task RefreshAsync(bool announce)
     {
+        if (_listener is null) return;
         if (!await _refreshLock.WaitAsync(0)) return;
         try
         {
@@ -97,7 +111,11 @@ public sealed class NotificationService : IDisposable
                 Changed?.Invoke(ordered);
             }
         }
-        catch (Exception ex) { Status = "Ошибка чтения: " + ex.Message; }
+        catch (Exception ex)
+        {
+            Status = "Ошибка чтения: " + ex.Message;
+            Diagnostics.Log("NotificationService: refresh failed — " + ex.Message);
+        }
         finally { _refreshLock.Release(); }
     }
 
@@ -120,7 +138,7 @@ public sealed class NotificationService : IDisposable
 
     public void Dismiss(uint id)
     {
-        try { _listener.RemoveNotification(id); } catch { }
+        try { _listener?.RemoveNotification(id); } catch { }
         if (_items.Remove(id)) Changed?.Invoke(_items.Values.OrderByDescending(x => x.Created).ToArray());
     }
 
@@ -130,7 +148,7 @@ public sealed class NotificationService : IDisposable
         _disposed = true;
         _pollCts?.Cancel();
         _pollCts?.Dispose();
-        try { _listener.NotificationChanged -= OnNotificationChanged; } catch { }
+        try { if (_listener is not null) _listener.NotificationChanged -= OnNotificationChanged; } catch { }
         _refreshLock.Dispose();
     }
 }

@@ -156,13 +156,28 @@ public partial class MainWindow : Window
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         _windowHandle = new WindowInteropHelper(this).Handle;
-        var source = HwndSource.FromHwnd(_windowHandle);
-        source?.AddHook(WindowHook);
-        NativeMethods.AddClipboardFormatListener(_windowHandle);
-        _tray = new TrayIconService(
-            () => Dispatcher.Invoke(() => Expand("home")),
-            () => Dispatcher.Invoke(() => Expand("settings")),
-            () => Dispatcher.Invoke(ExitApp));
+        Diagnostics.Log("Window_Loaded: start");
+        try
+        {
+            var source = HwndSource.FromHwnd(_windowHandle);
+            source?.AddHook(WindowHook);
+            NativeMethods.AddClipboardFormatListener(_windowHandle);
+        }
+        catch (Exception ex) { Diagnostics.Log("Window_Loaded: hook failed — " + ex.Message); }
+
+        try
+        {
+            _tray = new TrayIconService(
+                () => Dispatcher.Invoke(() => Expand("home")),
+                () => Dispatcher.Invoke(() => Expand("settings")),
+                () => Dispatcher.Invoke(ExitApp));
+        }
+        catch (Exception ex)
+        {
+            Diagnostics.Log("Window_Loaded: tray icon failed — " + ex.Message);
+            SystemStatus.Text = "Иконка в трее недоступна: " + ex.Message;
+        }
+
         Collapse(false);
         _cursorTimer.Start();
         _clockTimer.Start();
@@ -170,7 +185,12 @@ public partial class MainWindow : Window
         _ready = true;
         UpdateRadioStates();
         UpdateSystemControls();
-        await Task.WhenAll(_media.InitializeAsync(), _system.InitializeAsync(), _notifications.InitializeAsync());
+        Diagnostics.Log($"Window_Loaded: hot corner={Settings.HotCornerEnabled}, fullscreen={NativeMethods.IsFullScreenActive()}");
+
+        await SafeAsync("media", _media.InitializeAsync);
+        await SafeAsync("system", _system.InitializeAsync);
+        await SafeAsync("notifications", _notifications.InitializeAsync);
+
         Dispatcher.Invoke(() =>
         {
             NotificationStatus.Text = _notifications.Status;
@@ -192,6 +212,13 @@ public partial class MainWindow : Window
         ReminderToneCombo.SelectedIndex = Settings.ReminderTone switch { "double" => 1, "quiet" => 2, _ => 0 };
         CheckReminders();
         if (!string.IsNullOrWhiteSpace(Settings.WeatherKey)) _ = RefreshWeatherAsync(false);
+        Diagnostics.Log("Window_Loaded: ready");
+    }
+
+    private static async Task SafeAsync(string name, Func<Task> action)
+    {
+        try { await action(); }
+        catch (Exception ex) { Diagnostics.Log($"Initialize {name} failed — {ex.Message}"); }
     }
 
     private void BuildPanelOptions()
@@ -297,7 +324,8 @@ public partial class MainWindow : Window
 
     private void Cursor_Tick(object? sender, EventArgs e)
     {
-        if (_toastVisible || _closing || !NativeMethods.GetCursorPos(out var point)) return;
+        if (_closing || !NativeMethods.GetCursorPos(out var point)) return;
+        if (_toastVisible) return;
         if (_expanded)
         {
             if (_activeReminder is not null) return;
@@ -313,20 +341,35 @@ public partial class MainWindow : Window
             if (_peekVisible) Collapse();
             return;
         }
-        if (IsFullScreenCached())
-        {
-            if (_peekVisible) Collapse();
-            return;
-        }
         var monitor = NativeMethods.GetMonitor(point);
+        var workTop = monitor.Work.Top;
         if (_peekVisible)
         {
-            if (!IsCursorInsideIsland() && point.Y > monitor.Work.Top + 40) Collapse();
+            if (IsFullScreenCached()) { Collapse(false); return; }
+            if (!IsCursorInsideIsland() && point.Y > workTop + HotZone + 30) Collapse();
             return;
         }
-        if (point.Y <= monitor.Work.Top + 2 && point.Y >= monitor.Monitor.Top)
+        if (IsFullScreenCached())
+        {
+            if (point.Y <= workTop + HotZone) LogBlockedOnce("fullscreen");
+            return;
+        }
+        if (point.Y >= monitor.Monitor.Top && point.Y <= workTop + HotZone && IsOnActiveScreen(point, monitor))
             ShowPeek();
     }
+
+    private const int HotZone = 8;
+    private string _lastBlockReason = "";
+
+    private void LogBlockedOnce(string reason)
+    {
+        if (_lastBlockReason == reason) return;
+        _lastBlockReason = reason;
+        Diagnostics.Log("Hot corner suppressed: " + reason);
+    }
+
+    private static bool IsOnActiveScreen(NativeMethods.Point point, NativeMethods.MonitorInfo monitor) =>
+        point.X >= monitor.Monitor.Left && point.X <= monitor.Monitor.Right;
 
     private bool IsFullScreenCached()
     {
@@ -414,9 +457,12 @@ public partial class MainWindow : Window
         StopSizeAnimation();
         var monitor = GetTargetMonitor();
         var scale = GetMonitorScale(monitor.handle);
+        var workLeft = monitor.info.Work.Left / scale;
+        var workTop = monitor.info.Work.Top / scale;
         var workWidth = (monitor.info.Work.Right - monitor.info.Work.Left) / scale;
-        var targetLeft = monitor.info.Work.Left / scale + (workWidth - targetWidth) / 2 + Settings.HorizontalOffset;
-        var targetTop = monitor.info.Work.Top / scale;
+        var desiredLeft = workLeft + (workWidth - targetWidth) / 2 + Settings.HorizontalOffset;
+        var targetLeft = Math.Clamp(desiredLeft, workLeft, Math.Max(workLeft, workLeft + workWidth - targetWidth));
+        var targetTop = workTop;
         var full = new Rect(0, 0, targetWidth, targetHeight);
         Width = targetWidth;
         Height = targetHeight;
@@ -531,9 +577,13 @@ public partial class MainWindow : Window
         if (_closing) return;
         var target = GetTargetMonitor();
         var scale = GetMonitorScale(target.handle);
+        var workLeft = target.info.Work.Left / scale;
+        var workTop = target.info.Work.Top / scale;
         var workWidth = (target.info.Work.Right - target.info.Work.Left) / scale;
-        Left = target.info.Work.Left / scale + (workWidth - Width) / 2 + Settings.HorizontalOffset;
-        Top = target.info.Work.Top / scale;
+        var left = workLeft + (workWidth - Width) / 2 + Settings.HorizontalOffset;
+        var maxLeft = workLeft + workWidth - Width;
+        Left = Math.Clamp(left, workLeft, Math.Max(workLeft, maxLeft));
+        Top = workTop;
     }
 
     private (NativeMethods.MonitorInfo info, IntPtr handle) GetTargetMonitor()
@@ -547,11 +597,20 @@ public partial class MainWindow : Window
         return (info, handle);
     }
 
-    private static double GetMonitorScale(IntPtr monitor)
+    private double GetMonitorScale(IntPtr monitor)
     {
         try
         {
             if (NativeMethods.GetDpiForMonitor(monitor, 0, out var dpi, out _) == 0 && dpi > 0) return dpi / 96d;
+        }
+        catch { }
+        try
+        {
+            if (_windowHandle != IntPtr.Zero)
+            {
+                var windowDpi = NativeMethods.GetDpiForWindow(_windowHandle);
+                if (windowDpi > 0) return windowDpi / 96d;
+            }
         }
         catch { }
         return 1;
