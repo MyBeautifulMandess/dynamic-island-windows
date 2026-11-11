@@ -18,6 +18,7 @@ internal static class NativeMethods
     internal const int SwpNoZOrder = 0x0004;
     internal const int SwpNoActivate = 0x0010;
     internal const int SwShowNormal = 1;
+    internal const int WsExToolWindow = 0x00000080;
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct Point { public int X; public int Y; }
@@ -115,6 +116,7 @@ internal static class NativeMethods
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)] internal static extern bool Shell_NotifyIcon(uint message, ref NotifyIconData data);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] internal static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
     [DllImport("user32.dll")] internal static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] internal static extern uint RegisterWindowMessage(string name);
     [DllImport("user32.dll")] internal static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] internal static extern bool ShowWindowAsync(IntPtr window, int command);
     [DllImport("user32.dll", SetLastError = true)] internal static extern bool AddClipboardFormatListener(IntPtr window);

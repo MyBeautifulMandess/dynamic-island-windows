@@ -568,6 +568,10 @@ public partial class MainWindow : Window
         if (!animate) { Hide(); PositionWindow(); return; }
         AnimateOut(150, () =>
         {
+            // A reminder or a toast can arrive during the collapse animation and
+            // re-show the window; hiding it here would leave the island invisible
+            // with an active reminder, which never clears on its own.
+            if (_activeReminder is not null || _expanded || _toastVisible || _peekVisible) return;
             Hide();
             SetWindowSize(Settings.IslandWidth, Settings.IslandHeight);
             PositionWindow();
@@ -1041,6 +1045,16 @@ public partial class MainWindow : Window
 
     private void CheckReminders()
     {
+        // A reminder popup can only be dismissed while the island is on screen. If
+        // the collapse animation hid the window after the popup was shown, the
+        // popup would block the island forever: hot corner, toasts and the panel
+        // all wait for the active reminder to clear. Drop the stale state so the
+        // reminder is shown again instead of freezing the window.
+        if (_activeReminder is not null && !IsVisible)
+        {
+            _activeReminder = null;
+            ReminderPopup.Visibility = Visibility.Collapsed;
+        }
         if (_activeReminder is not null) return;
         var due = _allReminders.Where(x => !x.Done && x.Due <= DateTime.Now).OrderBy(x => x.Due).FirstOrDefault();
         if (due is null) return;

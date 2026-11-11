@@ -19,6 +19,7 @@ internal sealed class TrayIconService : IDisposable
     private readonly Action _onOpen;
     private readonly Action _onSettings;
     private readonly Action _onExit;
+    private readonly uint _taskbarCreated;
     private NativeMethods.NotifyIconData _data;
     private IntPtr _icon;
     private ContextMenu? _menu;
@@ -29,10 +30,15 @@ internal sealed class TrayIconService : IDisposable
         _onOpen = onOpen;
         _onSettings = onSettings;
         _onExit = onExit;
+        _taskbarCreated = NativeMethods.RegisterWindowMessage("TaskbarCreated");
         _source = new HwndSource(new HwndSourceParameters("DynamicIslandTray")
         {
+            // A message-only window (HWND_MESSAGE) never receives the broadcast
+            // TaskbarCreated that Explorer sends after it restarts, so the icon
+            // registration could not be restored. A hidden top-level tool window
+            // does receive it and still stays out of the taskbar and Alt+Tab.
             WindowStyle = 0,
-            ParentWindow = new IntPtr(-3),
+            ExtendedWindowStyle = NativeMethods.WsExToolWindow,
             Width = 0,
             Height = 0
         });
@@ -48,7 +54,15 @@ internal sealed class TrayIconService : IDisposable
             Icon = _icon,
             Tip = "Dynamic Island"
         };
-        NativeMethods.Shell_NotifyIcon(NimAdd, ref _data);
+        Add();
+    }
+
+    private void Add()
+    {
+        // The icon belongs to the shell, not to this process: after Explorer
+        // restarts the shell has no record of it, so it has to be added again.
+        if (!NativeMethods.Shell_NotifyIcon(NimAdd, ref _data))
+            Diagnostics.Log("Tray: Shell_NotifyIcon(NIM_ADD) failed, err=" + Marshal.GetLastWin32Error());
     }
 
     private static IntPtr LoadIcon()
@@ -71,6 +85,12 @@ internal sealed class TrayIconService : IDisposable
 
     private IntPtr Hook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (msg == _taskbarCreated)
+        {
+            // Explorer restarted: it dropped every icon it used to own.
+            Add();
+            return IntPtr.Zero;
+        }
         if (msg != NativeMethods.WmTray) return IntPtr.Zero;
         var action = (int)lParam;
         if (action is NativeMethods.WmLButtonUp or NativeMethods.WmLButtonDblClk)
