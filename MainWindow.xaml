@@ -4,7 +4,133 @@
         Title="Dynamic Island" Width="278" Height="42" Icon="Assets/app.ico"
         WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" WindowStartupLocation="Manual" ShowActivated="False"
-        Closing="Window_Closing" Loaded="Window_Loaded" Activated="Window_Activated">
+        Closing="Window_Closing" Loaded="Window_Loaded" Activated="Window_Activated"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType">
+    <Window.Resources>
+        <DataTemplate x:Key="NotificationTemplate">
+            <Border Background="{StaticResource CardBrush}" CornerRadius="12" Padding="12,9" Margin="0,0,0,6">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /><ColumnDefinition Width="28" /></Grid.ColumnDefinitions>
+                    <Border Background="{DynamicResource AccentBrush}" Width="26" Height="26" CornerRadius="8" VerticalAlignment="Top">
+                        <TextBlock Text="{Binding Initial}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" FontSize="12" />
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="9,0,4,0">
+                        <TextBlock FontSize="10.5" Foreground="{StaticResource MutedBrush}" TextWrapping="NoWrap">
+                            <Run Text="{Binding AppName, Mode=OneWay}" /><Run Text="  ·  " /><Run Text="{Binding Time, Mode=OneWay}" />
+                        </TextBlock>
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Margin="0,2,0,0" />
+                        <TextBlock Text="{Binding Body}" Foreground="{StaticResource MutedBrush}" FontSize="11.5" MaxHeight="32" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <Button Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE711;" Width="26" Height="26" FontSize="12"
+                            Tag="{Binding}" Click="DismissNotification_Click" ToolTip="Удалить уведомление" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ReminderTemplate">
+            <Border Background="{StaticResource CardBrush}" CornerRadius="12" Padding="12,10" Margin="0,0,0,6">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Border Background="{DynamicResource AccentBrush}" CornerRadius="2" />
+                    <StackPanel Grid.Column="1" Margin="10,0,6,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                        <TextBlock Text="{Binding WhenText}" Foreground="{StaticResource MutedBrush}" FontSize="11.5" Margin="0,2,0,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Button Style="{StaticResource IconButton}" Content="&#xE73E;" Width="30" Height="30" FontSize="14" Tag="{Binding}" Click="CompleteReminder_Click" ToolTip="Выполнено" />
+                        <Button Style="{StaticResource IconButton}" Content="&#xE823;" Width="30" Height="30" FontSize="14" Tag="{Binding}" Click="SnoozeReminder_Click" ToolTip="Отложить" />
+                        <Button Style="{StaticResource IconButton}" Content="&#xE711;" Width="30" Height="30" FontSize="14" Tag="{Binding}" Click="DeleteReminder_Click" ToolTip="Удалить" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="DoneReminderTemplate">
+            <Border Background="{StaticResource CardBrush}" CornerRadius="10" Padding="12,8" Margin="0,0,0,5" Opacity="0.6">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Title}" TextDecorations="Strikethrough" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                        <TextBlock Text="{Binding DoneText}" FontSize="10.5" Foreground="{StaticResource MutedBrush}" Margin="0,2,0,0" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Style="{StaticResource IconButton}" Content="&#xE711;" Width="26" Height="26" FontSize="12" Tag="{Binding}" Click="DeleteReminder_Click" ToolTip="Удалить" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="NoteTemplate">
+            <Border Background="{StaticResource CardBrush}" CornerRadius="11" Padding="11,9" Margin="0,0,0,6">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Text}" MaxHeight="76" TextTrimming="CharacterEllipsis" FontSize="12.5" />
+                        <TextBlock Text="{Binding Time}" FontSize="10" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Margin="6,0,0,0">
+                        <Button Style="{StaticResource IconButton}" Content="&#xE70F;" Width="28" Height="28" FontSize="13" Tag="{Binding}" Click="EditNote_Click" ToolTip="Изменить" />
+                        <Button Style="{StaticResource IconButton}" Content="&#xE8C8;" Width="28" Height="28" FontSize="13" Tag="{Binding}" Click="CopyNote_Click" ToolTip="Скопировать" />
+                        <Button Style="{StaticResource IconButton}" Content="&#xE711;" Width="28" Height="28" FontSize="13" Tag="{Binding}" Click="DeleteNote_Click" ToolTip="Удалить" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="FileTemplate">
+            <Border Background="{StaticResource CardBrush}" CornerRadius="11" Margin="0,0,0,6" Padding="6">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="48" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Border Width="38" Height="38" CornerRadius="9" Background="{DynamicResource AccentBrush}" Margin="5,0">
+                        <TextBlock Text="{Binding Extension}" FontSize="9" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,6,0">
+                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" FontSize="12.5" />
+                        <TextBlock Text="{Binding Details}" FontSize="10.5" Foreground="{StaticResource MutedBrush}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Button Style="{StaticResource IconButton}" Content="&#xE8A7;" Width="30" Height="30" FontSize="14" Tag="{Binding}" Click="OpenFile_Click" ToolTip="Открыть" />
+                        <Button Style="{StaticResource IconButton}" Content="&#xE838;" Width="30" Height="30" FontSize="14" Tag="{Binding}" Click="RevealFile_Click" ToolTip="Показать в папке" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ClipboardTemplate">
+            <Button Style="{StaticResource CardButton}" Tag="{Binding}" Click="PasteClipboard_Click">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding Preview}" MaxHeight="45" TextTrimming="CharacterEllipsis" FontSize="12.5" />
+                    <TextBlock Grid.Column="1" Text="{Binding Time}" Foreground="{StaticResource MutedBrush}" FontSize="10.5" Margin="10,0,0,0" />
+                </Grid>
+            </Button>
+        </DataTemplate>
+
+        <DataTemplate x:Key="CalendarEventTemplate">
+            <Border Background="{StaticResource CardBrush}" CornerRadius="12" Padding="12,9" Margin="0,0,0,6">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Border Background="{DynamicResource AccentBrush}" CornerRadius="2" />
+                    <StackPanel Grid.Column="1" Margin="10,0,6,0">
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                        <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11.5" Margin="0,2,0,0" TextWrapping="NoWrap">
+                            <Run Text="{Binding WhenText, Mode=OneWay}" /><Run Text="  " /><Run Text="{Binding EndText, Mode=OneWay}" />
+                        </TextBlock>
+                        <TextBlock Text="{Binding ReminderText}" Foreground="{StaticResource MutedBrush}" FontSize="10.5" TextTrimming="CharacterEllipsis"
+                                   Visibility="{Binding HasReminder, Converter={StaticResource BoolVisibility}}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Button Style="{StaticResource IconButton}" Content="&#xE8C8;" Width="30" Height="30" FontSize="14" Tag="{Binding}" Click="CopyCalendarEvent_Click" ToolTip="Скопировать" />
+                        <Button Style="{StaticResource IconButton}" Content="&#xE711;" Width="30" Height="30" FontSize="14" Tag="{Binding}" Click="DeleteCalendarEvent_Click" ToolTip="Удалить" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="TimeSlotTemplate">
+            <Button Style="{StaticResource PickerTimeButton}" Tag="{Binding}" Click="PickerTime_Click"
+                    Background="{Binding Background}" Foreground="{Binding Foreground}" Content="{Binding Text}" />
+        </DataTemplate>
+    </Window.Resources>
+
     <Grid x:Name="LayoutRoot">
         <Border x:Name="IslandBorder" Background="#F0141419" CornerRadius="0,0,21,21"
                 BorderBrush="#18FFFFFF" BorderThickness="0,0,1,1"
@@ -13,6 +139,7 @@
                 <RectangleGeometry x:Name="IslandClip" Rect="0,0,278,42" />
             </Border.Clip>
             <Grid>
+                <!-- Свёрнутая пилюля -->
                 <Grid x:Name="CompactPanel" Background="Transparent" PreviewMouseLeftButtonDown="Compact_MouseLeftButtonDown">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="38" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
@@ -22,10 +149,10 @@
                         <Border Width="7" Height="7" CornerRadius="4" Background="{DynamicResource AccentBrush}" Margin="0,0,8,0" />
                         <TextBlock x:Name="CompactLabel" Text="Dynamic Island" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="NoWrap" />
                         <StackPanel x:Name="CompactWeatherPanel" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed">
-                            <TextBlock Text="{Binding Weather.Icon}" FontSize="16" Margin="0,0,5,0" VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding Weather.Temperature}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Weather.Icon}" FontSize="16" Margin="0,0,5,0" VerticalAlignment="Center" Width="18" TextAlignment="Center" />
+                            <TextBlock Text="{Binding Weather.Temperature}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="NoWrap" MinWidth="30" />
                             <TextBlock Text="{Binding Weather.Condition}" FontSize="10" Foreground="{StaticResource MutedBrush}" Margin="5,0,0,0"
-                                       MaxWidth="82" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" VerticalAlignment="Center" />
+                                       MaxWidth="78" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" VerticalAlignment="Center" />
                         </StackPanel>
                         <TextBlock x:Name="CompactTrack" Margin="8,0,0,0" FontSize="11" Foreground="{StaticResource MutedBrush}"
                                    TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" MaxWidth="130" VerticalAlignment="Center" />
@@ -36,13 +163,14 @@
                     </StackPanel>
                 </Grid>
 
+                <!-- Раскрытая панель -->
                 <Grid x:Name="ExpandedPanel" Visibility="Collapsed">
-                    <Grid.RowDefinitions><RowDefinition Height="50" /><RowDefinition Height="*" /><RowDefinition Height="28" /></Grid.RowDefinitions>
+                    <Grid.RowDefinitions><RowDefinition Height="50" /><RowDefinition Height="*" /><RowDefinition Height="26" /></Grid.RowDefinitions>
                     <Grid Margin="15,5,9,0">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <Border Width="8" Height="8" CornerRadius="4" Background="{DynamicResource AccentBrush}" Margin="0,0,10,0" />
-                            <TextBlock Text="Dynamic Island" FontWeight="SemiBold" FontSize="14" />
-                            <TextBlock x:Name="HeaderContext" Text="  /  Центр" Foreground="{StaticResource MutedBrush}" FontSize="12" />
+                            <TextBlock Text="Dynamic Island" FontWeight="SemiBold" FontSize="14" TextWrapping="NoWrap" />
+                            <TextBlock x:Name="HeaderContext" Text="  /  Центр" Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="NoWrap" />
                         </StackPanel>
                         <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
                             <TextBlock x:Name="ExpandedClock" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="{StaticResource MutedBrush}" />
@@ -57,71 +185,74 @@
                             </ScrollViewer>
                         </Border>
                         <Grid Grid.Column="1" Margin="15,0,15,5">
+                            <!-- Центр управления -->
                             <ScrollViewer x:Name="HomePanel" VerticalScrollBarVisibility="Auto">
                                 <StackPanel>
-                                    <TextBlock Text="Центр управления" FontSize="22" FontWeight="SemiBold" />
+                                    <TextBlock Text="Центр управления" FontSize="21" FontWeight="SemiBold" FontFamily="{StaticResource DisplayFont}" />
                                     <TextBlock x:Name="DateText" Foreground="{StaticResource MutedBrush}" Margin="0,3,0,15" />
-                                    <UniformGrid Columns="3" Margin="0,0,0,12">
+
+                                    <UniformGrid Columns="3" Margin="0,0,0,10">
                                         <ToggleButton x:Name="WifiToggle" Click="Wifi_Click" Margin="0,0,7,0">
-                                            <StackPanel><TextBlock FontFamily="{StaticResource IconFont}" FontSize="21" Text="&#xE701;" HorizontalAlignment="Center" /><TextBlock Text="Wi-Fi" HorizontalAlignment="Center" Margin="0,6,0,0" /></StackPanel>
+                                            <StackPanel><TextBlock FontFamily="{StaticResource IconFont}" FontSize="21" Text="&#xE701;" HorizontalAlignment="Center" /><TextBlock Text="Wi-Fi" HorizontalAlignment="Center" Margin="0,6,0,0" FontSize="11.5" /></StackPanel>
                                         </ToggleButton>
                                         <ToggleButton x:Name="BluetoothToggle" Click="Bluetooth_Click" Margin="0,0,7,0">
-                                            <StackPanel><TextBlock FontFamily="{StaticResource IconFont}" FontSize="21" Text="&#xE702;" HorizontalAlignment="Center" /><TextBlock Text="Bluetooth" HorizontalAlignment="Center" Margin="0,6,0,0" /></StackPanel>
+                                            <StackPanel><TextBlock FontFamily="{StaticResource IconFont}" FontSize="21" Text="&#xE702;" HorizontalAlignment="Center" /><TextBlock Text="Bluetooth" HorizontalAlignment="Center" Margin="0,6,0,0" FontSize="11.5" /></StackPanel>
                                         </ToggleButton>
                                         <ToggleButton x:Name="MuteToggle" Click="Mute_Click">
-                                            <StackPanel><TextBlock FontFamily="{StaticResource IconFont}" FontSize="21" Text="&#xE767;" HorizontalAlignment="Center" /><TextBlock Text="Без звука" HorizontalAlignment="Center" Margin="0,6,0,0" /></StackPanel>
+                                            <StackPanel><TextBlock FontFamily="{StaticResource IconFont}" FontSize="21" Text="&#xE767;" HorizontalAlignment="Center" /><TextBlock Text="Без звука" HorizontalAlignment="Center" Margin="0,6,0,0" FontSize="11.5" /></StackPanel>
                                         </ToggleButton>
                                     </UniformGrid>
-                                    <Border Background="{StaticResource CardBrush}" CornerRadius="12" Padding="13,8" Margin="0,0,0,8">
-                                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="30" /><ColumnDefinition Width="*" /><ColumnDefinition Width="40" /></Grid.ColumnDefinitions>
-                                            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE995;" VerticalAlignment="Center" />
-                                            <Slider x:Name="VolumeSlider" Grid.Column="1" ValueChanged="Volume_Changed" VerticalAlignment="Center" />
-                                            <TextBlock x:Name="VolumeText" Grid.Column="2" Text="0%" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
+
+                                    <Border Background="{StaticResource CardBrush}" CornerRadius="13" Padding="13,6" Margin="0,0,0,7">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition Width="*" /><ColumnDefinition Width="40" /></Grid.ColumnDefinitions>
+                                            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE995;" VerticalAlignment="Center" FontSize="14" Foreground="{StaticResource MutedBrush}" />
+                                            <Slider x:Name="VolumeSlider" Grid.Column="1" ValueChanged="Volume_Changed" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                            <Border Grid.Column="2" Style="{StaticResource ValueChip}"><TextBlock x:Name="VolumeText" Style="{StaticResource ChipText}" Text="0%" /></Border>
                                         </Grid>
                                     </Border>
-                                    <Border Background="{StaticResource CardBrush}" CornerRadius="12" Padding="13,8" Margin="0,0,0,12">
-                                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="30" /><ColumnDefinition Width="*" /><ColumnDefinition Width="40" /></Grid.ColumnDefinitions>
-                                            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE706;" VerticalAlignment="Center" />
-                                            <Slider x:Name="BrightnessSlider" Grid.Column="1" ValueChanged="Brightness_Changed" VerticalAlignment="Center" />
-                                            <TextBlock x:Name="BrightnessText" Grid.Column="2" Text="—" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
+                                    <Border Background="{StaticResource CardBrush}" CornerRadius="13" Padding="13,6" Margin="0,0,0,12">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition Width="*" /><ColumnDefinition Width="40" /></Grid.ColumnDefinitions>
+                                            <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE706;" VerticalAlignment="Center" FontSize="14" Foreground="{StaticResource MutedBrush}" />
+                                            <Slider x:Name="BrightnessSlider" Grid.Column="1" ValueChanged="Brightness_Changed" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                            <Border Grid.Column="2" Style="{StaticResource ValueChip}"><TextBlock x:Name="BrightnessText" Style="{StaticResource ChipText}" Text="—" /></Border>
                                         </Grid>
                                     </Border>
-                                    <Grid Margin="0,0,0,7">
-                                        <TextBlock Text="Ближайшее событие" FontSize="16" FontWeight="SemiBold" />
-                                        <Button HorizontalAlignment="Right" Content="Календарь" Click="ShowCalendar_Click" Padding="8,3" />
+
+                                    <Grid Margin="0,0,0,6">
+                                        <TextBlock Text="Ближайшее событие" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <Button Style="{StaticResource LinkButton}" HorizontalAlignment="Right" Content="Календарь" Click="ShowCalendar_Click" />
                                     </Grid>
-                                    <TextBlock x:Name="HomeCalendarText" Text="Событий нет — добавьте в календаре" Foreground="{StaticResource MutedBrush}" Margin="0,3,0,13" />
-                                    <Grid Margin="0,0,0,7">
-                                        <TextBlock Text="Недавние уведомления" FontSize="16" FontWeight="SemiBold" />
-                                        <Button HorizontalAlignment="Right" Content="Все" Click="ShowNotifications_Click" Padding="8,3" />
+                                    <TextBlock x:Name="HomeCalendarText" Text="Событий нет — добавьте в календаре" Foreground="{StaticResource MutedBrush}" Margin="0,2,0,12" FontSize="12" />
+
+                                    <Grid Margin="0,0,0,6">
+                                        <TextBlock Text="Недавние уведомления" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <Button Style="{StaticResource LinkButton}" Content="Очистить" Click="ClearNotifications_Click" ToolTip="Убрать все уведомления из Центра" />
+                                            <Button Style="{StaticResource LinkButton}" Content="Все" Click="ShowNotifications_Click" />
+                                        </StackPanel>
                                     </Grid>
-                                    <ItemsControl ItemsSource="{Binding Notifications}">
-                                        <ItemsControl.ItemTemplate><DataTemplate>
-                                            <Border Background="{StaticResource CardBrush}" CornerRadius="10" Padding="11,8" Margin="0,0,0,6">
-                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="30" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                                    <Border Background="{DynamicResource AccentBrush}" Width="25" Height="25" CornerRadius="7" VerticalAlignment="Top"><TextBlock Text="{Binding Initial}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" /></Border>
-                                                    <StackPanel Grid.Column="1"><TextBlock FontSize="11" Foreground="{StaticResource MutedBrush}"><Run Text="{Binding AppName, Mode=OneWay}" /><Run Text="  ·  " /><Run Text="{Binding Time, Mode=OneWay}" /></TextBlock><TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxHeight="20" /><TextBlock Text="{Binding Body}" Foreground="{StaticResource MutedBrush}" MaxHeight="32" TextTrimming="CharacterEllipsis" /></StackPanel>
-                                                </Grid>
-                                            </Border>
-                                        </DataTemplate></ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                    <TextBlock Text="Пока уведомлений нет" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" Margin="0,16" x:Name="NoNotificationsHome" />
+                                    <ListBox x:Name="HomeNotificationsList" ItemsSource="{Binding Notifications}" Style="{StaticResource VirtualList}"
+                                             ItemTemplate="{StaticResource NotificationTemplate}" MaxHeight="240" />
+                                    <TextBlock Text="Пока уведомлений нет" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" Margin="0,14" x:Name="NoNotificationsHome" FontSize="12" />
                                 </StackPanel>
                             </ScrollViewer>
 
+                            <!-- Календарь -->
                             <Grid x:Name="CalendarPanel" Visibility="Collapsed">
                                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                                 <Grid>
-                                    <TextBlock x:Name="CalendarMonthText" FontSize="22" FontWeight="SemiBold" />
+                                    <TextBlock x:Name="CalendarMonthText" FontSize="21" FontWeight="SemiBold" FontFamily="{StaticResource DisplayFont}" VerticalAlignment="Center" />
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                         <Button Style="{StaticResource IconButton}" Content="&#xE76B;" Click="CalendarPrev_Click" ToolTip="Предыдущий месяц" />
                                         <Button Style="{StaticResource IconButton}" Content="&#xE76C;" Click="CalendarNext_Click" ToolTip="Следующий месяц" />
-                                        <Button Content="Сегодня" Click="CalendarToday_Click" Margin="5,0,0,0" />
+                                        <Button Content="Сегодня" Click="CalendarToday_Click" Margin="5,0,0,0" FontSize="12" />
                                     </StackPanel>
                                 </Grid>
                                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,8,0,0">
                                     <StackPanel>
-                                        <Border Background="{StaticResource CardBrush}" CornerRadius="12" Padding="8,6" Margin="0,0,0,10">
+                                        <Border Background="{StaticResource CardBrush}" CornerRadius="13" Padding="8,6" Margin="0,0,0,9">
                                             <StackPanel>
                                                 <UniformGrid Columns="7" Margin="0,0,0,2">
                                                     <TextBlock Text="Пн" FontSize="10" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" />
@@ -135,10 +266,10 @@
                                                 <ItemsControl x:Name="CalendarGrid">
                                                     <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="7" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                                     <ItemsControl.ItemTemplate><DataTemplate>
-                                                        <Button Click="CalendarDay_Click" Margin="1" Height="26" Padding="0" Tag="{Binding Date}" Background="{Binding Background}"
+                                                        <Button Click="CalendarDay_Click" Margin="1" Height="27" Padding="0" Tag="{Binding Date}" Background="{Binding Background}"
                                                                 ToolTip="{Binding ToolTip}" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
                                                             <StackPanel Orientation="Horizontal" Opacity="{Binding Opacity}">
-                                                                <TextBlock Text="{Binding Day}" FontSize="11" Foreground="{Binding Foreground}" />
+                                                                <TextBlock Text="{Binding Day}" FontSize="11.5" Foreground="{Binding Foreground}" />
                                                                 <TextBlock Text="•" FontSize="9" Margin="2,0,0,0" Foreground="{DynamicResource AccentBrush}" Visibility="{Binding HasItems, Converter={StaticResource BoolVisibility}}" VerticalAlignment="Center" />
                                                             </StackPanel>
                                                         </Button>
@@ -146,241 +277,417 @@
                                                 </ItemsControl>
                                             </StackPanel>
                                         </Border>
-                                        <Border Background="{StaticResource CardBrush}" CornerRadius="12" Padding="10" Margin="0,0,0,10">
+                                        <Border Background="{StaticResource CardBrush}" CornerRadius="13" Padding="11">
                                             <StackPanel>
                                                 <TextBlock x:Name="CalendarSelectedText" FontWeight="SemiBold" />
-                                                <Grid Margin="0,7,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="78" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                <Grid Margin="0,7,0,0">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="88" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                                     <TextBox x:Name="CalendarTitleInput" ToolTip="Название события" />
                                                     <TextBox x:Name="CalendarTimeInput" Grid.Column="1" Text="09:00" Margin="6,0,0,0" ToolTip="Время ЧЧ:ММ" />
                                                     <Button Grid.Column="2" Content="Добавить" Style="{StaticResource PrimaryButton}" Click="AddCalendarEvent_Click" Margin="6,0,0,0" />
                                                 </Grid>
-                                                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                                                     <CheckBox x:Name="CalendarReminderCheck" Content="Напомнить за 10 минут" IsChecked="True" Margin="0,0,14,0" />
                                                     <CheckBox x:Name="CalendarAllDayCheck" Content="Весь день" />
                                                 </StackPanel>
                                             </StackPanel>
                                         </Border>
-                                        <TextBlock x:Name="CalendarStatus" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,8" />
-                                        <ItemsControl ItemsSource="{Binding DayEvents}"><ItemsControl.ItemTemplate><DataTemplate>
-                                            <Border Background="{StaticResource CardBrush}" CornerRadius="12" Padding="13,10" Margin="0,0,0,8">
-                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                                    <Border Background="{DynamicResource AccentBrush}" CornerRadius="2" />
-                                                    <StackPanel Grid.Column="1" Margin="11,0,8,0"><TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" /><TextBlock Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,3,0,0"><Run Text="{Binding WhenText, Mode=OneWay}" /><Run Text="  " /><Run Text="{Binding EndText, Mode=OneWay}" /></TextBlock><TextBlock Text="{Binding ReminderText}" Foreground="{StaticResource MutedBrush}" FontSize="11" TextTrimming="CharacterEllipsis" Visibility="{Binding HasReminder, Converter={StaticResource BoolVisibility}}" /></StackPanel>
-                                                    <StackPanel Grid.Column="2" Orientation="Horizontal"><Button Style="{StaticResource IconButton}" Content="&#xE8C8;" Tag="{Binding}" Click="CopyCalendarEvent_Click" ToolTip="Скопировать" /><Button Style="{StaticResource IconButton}" Content="&#xE711;" Tag="{Binding}" Click="DeleteCalendarEvent_Click" ToolTip="Удалить" /></StackPanel>
-                                                </Grid>
-                                            </Border>
-                                        </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                                        <TextBlock x:Name="CalendarStatus" Foreground="{StaticResource MutedBrush}" Margin="0,8,0,7" FontSize="11.5" />
+                                        <ListBox ItemsSource="{Binding DayEvents}" Style="{StaticResource VirtualList}" ItemTemplate="{StaticResource CalendarEventTemplate}" MaxHeight="260" />
                                     </StackPanel>
                                 </ScrollViewer>
                             </Grid>
 
+                            <!-- Напоминания -->
                             <Grid x:Name="RemindersPanel" Visibility="Collapsed">
-                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                                <Grid><TextBlock Text="Напоминания" FontSize="22" FontWeight="SemiBold" /><TextBlock x:Name="RemindersStatus" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" /></Grid>
-                                <Border Grid.Row="1" Background="{StaticResource CardBrush}" CornerRadius="12" Padding="10" Margin="0,10,0,12">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid>
+                                    <TextBlock Text="Напоминания" FontSize="21" FontWeight="SemiBold" FontFamily="{StaticResource DisplayFont}" VerticalAlignment="Center" />
+                                    <TextBlock x:Name="RemindersStatus" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11.5" />
+                                </Grid>
+                                <Border Grid.Row="1" Background="{StaticResource CardBrush}" CornerRadius="13" Padding="11" Margin="0,10,0,11">
                                     <StackPanel>
                                         <TextBox x:Name="ReminderTitleInput" ToolTip="Что напомнить" />
-                                        <Grid Margin="0,7,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="90" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                            <TextBox x:Name="ReminderDateInput" ToolTip="Дата ДД.ММ.ГГГГ" />
-                                            <TextBox x:Name="ReminderTimeInput" Grid.Column="1" Text="09:00" Margin="6,0,0,0" ToolTip="Время ЧЧ:ММ" />
+                                        <Grid Margin="0,7,0,0">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="98" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                            <Button x:Name="ReminderDateButton" Style="{StaticResource FieldButton}" Click="ReminderDateButton_Click" ToolTip="Выбрать дату">
+                                                <Grid>
+                                                    <TextBlock x:Name="ReminderDateText" Style="{StaticResource RowLabel}" VerticalAlignment="Center" />
+                                                    <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE70D;" FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
+                                                </Grid>
+                                            </Button>
+                                            <Button x:Name="ReminderTimeButton" Grid.Column="1" Style="{StaticResource FieldButton}" Margin="6,0,0,0" Click="ReminderTimeButton_Click" ToolTip="Выбрать время">
+                                                <Grid>
+                                                    <TextBlock x:Name="ReminderTimeText" Style="{StaticResource RowLabel}" VerticalAlignment="Center" Text="09:00" />
+                                                    <TextBlock FontFamily="{StaticResource IconFont}" Text="&#xE70D;" FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
+                                                </Grid>
+                                            </Button>
                                             <Button Grid.Column="2" Content="Добавить" Style="{StaticResource PrimaryButton}" Click="AddReminder_Click" Margin="6,0,0,0" />
                                         </Grid>
-                                        <CheckBox x:Name="ReminderCalendarCheck" Content="Создавать событие в календаре" IsChecked="True" Margin="0,7,0,0" />
-                                        <TextBlock x:Name="ReminderHint" Text="Напоминание остаётся на экране, пока вы не нажмёте «Выполнено» или «Отложить»." FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,2,0,0" />
+                                        <CheckBox x:Name="ReminderCalendarCheck" Content="Создавать событие в календаре" IsChecked="True" Margin="0,6,0,0" />
+                                        <TextBlock x:Name="ReminderHint" Text="Остаётся на экране, пока вы не нажмёте «Выполнено» или «Отложить»." FontSize="10.5" Foreground="{StaticResource MutedBrush}" Margin="0,2,0,0" />
                                     </StackPanel>
                                 </Border>
-                                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
-                                    <StackPanel>
-                                        <ItemsControl ItemsSource="{Binding Reminders}"><ItemsControl.ItemTemplate><DataTemplate>
-                                            <Border Background="{StaticResource CardBrush}" CornerRadius="12" Padding="13,10" Margin="0,0,0,8">
-                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="4" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                                    <Border Background="{DynamicResource AccentBrush}" CornerRadius="2" />
-                                                    <StackPanel Grid.Column="1" Margin="11,0,8,0"><TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding WhenText}" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,3,0,0" /></StackPanel>
-                                                    <StackPanel Grid.Column="2" Orientation="Horizontal">
-                                                        <Button Style="{StaticResource IconButton}" Content="&#xE73E;" Tag="{Binding}" Click="CompleteReminder_Click" ToolTip="Выполнено" />
-                                                        <Button Style="{StaticResource IconButton}" Content="&#xE823;" Tag="{Binding}" Click="SnoozeReminder_Click" ToolTip="Отложить" />
-                                                        <Button Style="{StaticResource IconButton}" Content="&#xE711;" Tag="{Binding}" Click="DeleteReminder_Click" ToolTip="Удалить" />
-                                                    </StackPanel>
-                                                </Grid>
-                                            </Border>
-                                        </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
-                                        <TextBlock x:Name="NoRemindersText" Text="Активных напоминаний нет" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" Margin="0,18" />
-                                        <TextBlock Text="Выполненные" FontWeight="SemiBold" FontSize="15" Margin="0,8,0,7" x:Name="DoneRemindersHeader" Visibility="Collapsed" />
-                                        <ItemsControl ItemsSource="{Binding DoneReminders}"><ItemsControl.ItemTemplate><DataTemplate>
-                                            <Border Background="{StaticResource CardBrush}" CornerRadius="10" Padding="12,8" Margin="0,0,0,6" Opacity="0.65">
-                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                                    <StackPanel><TextBlock Text="{Binding Title}" TextDecorations="Strikethrough" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding DoneText}" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,2,0,0" /></StackPanel>
-                                                    <Button Grid.Column="1" Style="{StaticResource IconButton}" Content="&#xE711;" Tag="{Binding}" Click="DeleteReminder_Click" ToolTip="Удалить" />
-                                                </Grid>
-                                            </Border>
-                                        </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
-                                    </StackPanel>
-                                </ScrollViewer>
+                                <Grid Grid.Row="2">
+                                    <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                    <ListBox x:Name="RemindersList" ItemsSource="{Binding Reminders}" Style="{StaticResource VirtualList}" ItemTemplate="{StaticResource ReminderTemplate}" />
+                                    <TextBlock x:Name="NoRemindersText" Text="Активных напоминаний нет" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,18" FontSize="12" />
+                                </Grid>
+                                <StackPanel x:Name="DoneRemindersSection" Grid.Row="3" Visibility="Collapsed">
+                                    <Button x:Name="DoneRemindersHeader" Click="ToggleDoneReminders_Click" HorizontalAlignment="Left" Padding="2,4" Margin="0,2,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock x:Name="DoneRemindersArrow" FontFamily="{StaticResource IconFont}" Text="&#xE76C;" FontSize="9"
+                                                       VerticalAlignment="Center" Margin="0,0,7,0" Foreground="{StaticResource MutedBrush}" RenderTransformOrigin="0.5,0.5" />
+                                            <TextBlock Text="Выполненные" FontWeight="SemiBold" FontSize="12.5" Foreground="{StaticResource MutedBrush}" />
+                                        </StackPanel>
+                                    </Button>
+                                    <ListBox x:Name="DoneRemindersList" Visibility="Collapsed" ItemsSource="{Binding DoneReminders}"
+                                             Style="{StaticResource VirtualList}" ItemTemplate="{StaticResource DoneReminderTemplate}" MaxHeight="150" Margin="0,4,0,0" />
+                                </StackPanel>
                             </Grid>
 
+                            <!-- Заметки -->
                             <Grid x:Name="NotesPanel" Visibility="Collapsed">
                                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                                <Grid><TextBlock Text="Заметки" FontSize="22" FontWeight="SemiBold" /><TextBlock x:Name="NotesStatus" HorizontalAlignment="Right" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" /></Grid>
-                                <Border Grid.Row="1" Background="{StaticResource CardBrush}" CornerRadius="12" Padding="10" Margin="0,10,0,12">
-                                    <Grid><Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions><TextBox x:Name="NotesInput" AcceptsReturn="True" TextWrapping="Wrap" Height="74" VerticalScrollBarVisibility="Auto" Background="#FF202027" /><Button Grid.Row="1" Content="Сохранить заметку" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Margin="0,8,0,0" Click="AddNote_Click" /></Grid>
+                                <Grid>
+                                    <TextBlock Text="Заметки" FontSize="21" FontWeight="SemiBold" FontFamily="{StaticResource DisplayFont}" VerticalAlignment="Center" />
+                                    <TextBlock x:Name="NotesStatus" HorizontalAlignment="Right" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" FontSize="11.5" />
+                                </Grid>
+                                <Border Grid.Row="1" Background="{StaticResource CardBrush}" CornerRadius="13" Padding="10" Margin="0,10,0,11">
+                                    <Grid>
+                                        <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                        <TextBox x:Name="NotesInput" AcceptsReturn="True" TextWrapping="Wrap" Height="74" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" />
+                                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0">
+                                            <Button x:Name="NoteSaveButton" Content="Сохранить заметку" Style="{StaticResource PrimaryButton}" Click="AddNote_Click" />
+                                            <Button x:Name="NoteCancelButton" Content="Отмена" Click="CancelNoteEdit_Click" Margin="6,0,0,0" Visibility="Collapsed" />
+                                        </StackPanel>
+                                    </Grid>
                                 </Border>
-                                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto"><ItemsControl ItemsSource="{Binding Notes}"><ItemsControl.ItemTemplate><DataTemplate>
-                                    <Border Background="{StaticResource CardBrush}" CornerRadius="11" Padding="11,8" Margin="0,0,0,7">
-                                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel><TextBlock Text="{Binding Text}" MaxHeight="78" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding Time}" FontSize="10" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,0" /></StackPanel><StackPanel Grid.Column="1" Orientation="Horizontal"><Button Style="{StaticResource IconButton}" Content="&#xE8C8;" Tag="{Binding}" Click="CopyNote_Click" ToolTip="Скопировать" /><Button Style="{StaticResource IconButton}" Content="&#xE711;" Tag="{Binding}" Click="DeleteNote_Click" ToolTip="Удалить" /></StackPanel></Grid>
-                                    </Border>
-                                </DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer>
+                                <ListBox x:Name="NotesList" Grid.Row="2" ItemsSource="{Binding Notes}" Style="{StaticResource VirtualList}" ItemTemplate="{StaticResource NoteTemplate}" />
                             </Grid>
 
+                            <!-- Быстрые файлы -->
                             <Grid x:Name="QuickFilesPanel" Visibility="Collapsed">
                                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                                <Grid><TextBlock Text="Быстрые файлы" FontSize="22" FontWeight="SemiBold" /><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="Обновить" Click="RefreshQuickFiles_Click" /><Button Content="Открыть папку" Click="OpenQuickFolder_Click" /></StackPanel></Grid>
-                                <TextBlock x:Name="QuickFilesStatus" Grid.Row="1" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,12" TextTrimming="CharacterEllipsis" />
-                                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto"><ItemsControl ItemsSource="{Binding QuickFiles}"><ItemsControl.ItemTemplate><DataTemplate>
-                                    <Border Background="{StaticResource CardBrush}" CornerRadius="11" Margin="0,0,0,7" Padding="6"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="48" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                        <Border Width="38" Height="38" CornerRadius="9" Background="{DynamicResource AccentBrush}" Margin="5,0"><TextBlock Text="{Binding Extension}" FontSize="9" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" /><TextBlock Text="{Binding Details}" FontSize="11" Foreground="{StaticResource MutedBrush}" /></StackPanel>
-                                        <StackPanel Grid.Column="2" Orientation="Horizontal"><Button Style="{StaticResource IconButton}" Content="&#xE8A7;" Tag="{Binding}" Click="OpenFile_Click" ToolTip="Открыть" /><Button Style="{StaticResource IconButton}" Content="&#xE838;" Tag="{Binding}" Click="RevealFile_Click" ToolTip="Показать в папке" /></StackPanel>
-                                    </Grid></Border>
-                                </DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer>
+                                <Grid>
+                                    <TextBlock Text="Быстрые файлы" FontSize="21" FontWeight="SemiBold" FontFamily="{StaticResource DisplayFont}" VerticalAlignment="Center" />
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="Обновить" Click="RefreshQuickFiles_Click" FontSize="12" />
+                                        <Button Content="Открыть папку" Click="OpenQuickFolder_Click" FontSize="12" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock x:Name="QuickFilesStatus" Grid.Row="1" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,10" TextTrimming="CharacterEllipsis" FontSize="11.5" />
+                                <ListBox Grid.Row="2" ItemsSource="{Binding QuickFiles}" Style="{StaticResource VirtualList}" ItemTemplate="{StaticResource FileTemplate}" />
                             </Grid>
 
+                            <!-- Медиа -->
                             <Grid x:Name="MediaPanel" Visibility="Collapsed">
                                 <StackPanel VerticalAlignment="Center">
                                     <Border Width="124" Height="124" CornerRadius="18" Background="{StaticResource CardBrush}" HorizontalAlignment="Center" ClipToBounds="True">
-                                        <Grid><TextBlock Text="&#xE8B2;" FontFamily="{StaticResource IconFont}" FontSize="45" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" /><Image Source="{Binding Media.Artwork}" Stretch="UniformToFill" Visibility="{Binding Media.Artwork, Converter={StaticResource NullVisibility}}" /></Grid>
+                                        <Grid>
+                                            <TextBlock Text="&#xE8B2;" FontFamily="{StaticResource IconFont}" FontSize="45" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
+                                            <Image Source="{Binding Media.Artwork}" Stretch="UniformToFill" Visibility="{Binding Media.Artwork, Converter={StaticResource NullVisibility}}" />
+                                        </Grid>
                                     </Border>
-                                    <TextBlock Text="{Binding Media.Title}" FontSize="21" FontWeight="SemiBold" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxHeight="30" Margin="0,15,0,2" />
-                                    <TextBlock Text="{Binding Media.Artist}" Foreground="{StaticResource MutedBrush}" TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxHeight="22" />
-                                    <TextBlock Text="{Binding Media.Source}" FontSize="11" Foreground="{StaticResource MutedBrush}" TextAlignment="Center" Margin="0,3,0,12" />
+                                    <TextBlock Text="{Binding Media.Title}" FontSize="20" FontWeight="SemiBold" TextAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" MaxHeight="30" Margin="0,15,0,2" />
+                                    <TextBlock Text="{Binding Media.Artist}" Foreground="{StaticResource MutedBrush}" TextAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" MaxHeight="22" />
+                                    <TextBlock Text="{Binding Media.Source}" FontSize="10.5" Foreground="{StaticResource MutedBrush}" TextAlignment="Center" Margin="0,3,0,12" />
                                     <Slider x:Name="MediaSeek" Minimum="0" Maximum="{Binding Media.Duration}" Value="{Binding Media.Position}" PreviewMouseLeftButtonDown="Seek_Down" PreviewMouseLeftButtonUp="Seek_Up" />
-                                    <Grid><TextBlock Text="{Binding Media.PositionText}" FontSize="11" Foreground="{StaticResource MutedBrush}" /><TextBlock Text="{Binding Media.DurationText}" FontSize="11" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Right" /></Grid>
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,14,0,0">
-                                        <Button Style="{StaticResource IconButton}" Content="&#xE892;" Width="54" Height="46" FontSize="22" Click="Previous_Click" />
-                                        <Button Style="{StaticResource IconButton}" Content="{Binding Media.PlayPauseGlyph}" Width="64" Height="50" FontSize="26" Background="{DynamicResource AccentBrush}" Click="PlayPause_Click" />
-                                        <Button Style="{StaticResource IconButton}" Content="&#xE893;" Width="54" Height="46" FontSize="22" Click="Next_Click" />
+                                    <Grid Margin="0,2,0,0">
+                                        <TextBlock Text="{Binding Media.PositionText}" FontSize="10.5" Foreground="{StaticResource MutedBrush}" />
+                                        <TextBlock Text="{Binding Media.DurationText}" FontSize="10.5" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Right" />
+                                    </Grid>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,12,0,0">
+                                        <Button Style="{StaticResource IconButton}" Content="&#xE892;" Width="52" Height="44" FontSize="21" Click="Previous_Click" ToolTip="Предыдущий трек" />
+                                        <Button Style="{StaticResource IconButton}" Content="{Binding Media.PlayPauseGlyph}" Width="60" Height="46" FontSize="24" Background="{DynamicResource AccentBrush}" Click="PlayPause_Click" ToolTip="Воспроизведение" />
+                                        <Button Style="{StaticResource IconButton}" Content="&#xE893;" Width="52" Height="44" FontSize="21" Click="Next_Click" ToolTip="Следующий трек" />
                                     </StackPanel>
                                 </StackPanel>
                             </Grid>
 
+                            <!-- Уведомления -->
                             <Grid x:Name="NotificationsPanel" Visibility="Collapsed">
                                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                                <Grid><TextBlock Text="Уведомления" FontSize="22" FontWeight="SemiBold" /><Button Content="Обновить" HorizontalAlignment="Right" Click="RefreshNotifications_Click" /></Grid>
-                                <TextBlock x:Name="NotificationStatus" Grid.Row="1" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,12" />
-                                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
-                                    <ItemsControl ItemsSource="{Binding Notifications}"><ItemsControl.ItemTemplate><DataTemplate>
-                                        <Border Background="{StaticResource CardBrush}" CornerRadius="12" Padding="13,10" Margin="0,0,0,8">
-                                            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="30" /></Grid.ColumnDefinitions>
-                                                <StackPanel><TextBlock FontSize="11" Foreground="{StaticResource MutedBrush}"><Run Text="{Binding AppName, Mode=OneWay}" /><Run Text="  ·  " /><Run Text="{Binding Time, Mode=OneWay}" /></TextBlock><TextBlock Text="{Binding Title}" FontWeight="SemiBold" Margin="0,3" /><TextBlock Text="{Binding Body}" Foreground="{StaticResource MutedBrush}" /></StackPanel>
-                                                <Button Grid.Column="1" Style="{StaticResource IconButton}" Content="&#xE711;" Width="28" Height="28" Tag="{Binding}" Click="DismissNotification_Click" ToolTip="Скрыть" />
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
-                                </ScrollViewer>
+                                <Grid>
+                                    <TextBlock Text="Уведомления" FontSize="21" FontWeight="SemiBold" FontFamily="{StaticResource DisplayFont}" VerticalAlignment="Center" />
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button x:Name="ClearNotificationsPanelButton" Content="Очистить" Click="ClearNotifications_Click" FontSize="12" ToolTip="Убрать все уведомления из Центра" />
+                                        <Button Content="Обновить" Click="RefreshNotifications_Click" FontSize="12" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock x:Name="NotificationStatus" Grid.Row="1" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,10" FontSize="11.5" />
+                                <Grid Grid.Row="2">
+                                    <ListBox x:Name="NotificationsList" ItemsSource="{Binding Notifications}" Style="{StaticResource VirtualList}" ItemTemplate="{StaticResource NotificationTemplate}" />
+                                    <TextBlock x:Name="NoNotificationsPanel" Text="Уведомлений нет" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,18" FontSize="12" />
+                                </Grid>
                             </Grid>
 
+                            <!-- AI -->
                             <Grid x:Name="AiPanel" Visibility="Collapsed">
                                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="1.2*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                    <ComboBox x:Name="AgentCombo" ItemsSource="{Binding Agents}" SelectionChanged="Agent_Changed"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" TextWrapping="NoWrap" /></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="1.2*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <ComboBox x:Name="AgentCombo" ItemsSource="{Binding Agents}" SelectionChanged="Agent_Changed">
+                                        <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" TextWrapping="NoWrap" /></DataTemplate></ComboBox.ItemTemplate>
+                                    </ComboBox>
                                     <ComboBox x:Name="ModelCombo" Grid.Column="1" ItemsSource="{Binding Models}" IsEditable="True" Text="{Binding Settings.AiModel, Mode=TwoWay}" Margin="7,0" ToolTip="Модель OpenAI-совместимого API" />
                                     <Button Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE74D;" Click="NewChat_Click" ToolTip="Новый диалог" />
                                 </Grid>
-                                <Border Grid.Row="1" Margin="0,10" Background="#50202027" CornerRadius="12" Padding="8">
-                                    <Grid><ScrollViewer x:Name="ChatScroll" VerticalScrollBarVisibility="Auto"><ItemsControl x:Name="ChatItems" ItemsSource="{Binding Chat}"><ItemsControl.ItemTemplate><DataTemplate>
-                                        <Border Background="#FF2B2B35" CornerRadius="12" Padding="11,8" Margin="0,3" MaxWidth="480" HorizontalAlignment="{Binding IsUser, Converter={StaticResource BoolAlignment}}">
-                                            <TextBlock Text="{Binding Content}" FontSize="13" />
-                                        </Border>
-                                    </DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer><TextBlock x:Name="EmptyChatText" Text="Задайте вопрос агенту. Адрес API, ключ и модель настраиваются ниже в «Настройках»." Foreground="{StaticResource MutedBrush}" TextAlignment="Center" VerticalAlignment="Center" Margin="30" /></Grid>
+                                <Border Grid.Row="1" Margin="0,9" Background="#3D202027" CornerRadius="12" Padding="8">
+                                    <Grid>
+                                        <ScrollViewer x:Name="ChatScroll" VerticalScrollBarVisibility="Auto">
+                                            <ItemsControl x:Name="ChatItems" ItemsSource="{Binding Chat}">
+                                                <ItemsControl.ItemTemplate><DataTemplate>
+                                                    <Border Background="#FF2B2B35" CornerRadius="12" Padding="11,8" Margin="0,3" MaxWidth="480"
+                                                            HorizontalAlignment="{Binding IsUser, Converter={StaticResource BoolAlignment}}">
+                                                        <TextBlock Text="{Binding Content}" FontSize="12.5" />
+                                                    </Border>
+                                                </DataTemplate></ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </ScrollViewer>
+                                        <TextBlock x:Name="EmptyChatText" Text="Задайте вопрос агенту. Адрес API, ключ и модель настраиваются ниже в «Настройках»."
+                                                   Foreground="{StaticResource MutedBrush}" TextAlignment="Center" VerticalAlignment="Center" Margin="30" FontSize="12" />
+                                    </Grid>
                                 </Border>
-                                <Grid Grid.Row="2"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                    <TextBox x:Name="ChatInput" AcceptsReturn="True" TextWrapping="Wrap" Height="66" VerticalScrollBarVisibility="Auto" KeyDown="ChatInput_KeyDown" />
+                                <Grid Grid.Row="2">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBox x:Name="ChatInput" AcceptsReturn="True" TextWrapping="Wrap" Height="64" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" KeyDown="ChatInput_KeyDown" />
                                     <Button x:Name="SendButton" Grid.Column="1" Style="{StaticResource PrimaryButton}" Content="Отправить" Margin="8,0,0,0" Click="SendChat_Click" />
                                 </Grid>
                             </Grid>
 
+                            <!-- Буфер обмена -->
                             <Grid x:Name="ClipboardPanel" Visibility="Collapsed">
                                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                                <Grid><TextBlock Text="Буфер обмена" FontSize="22" FontWeight="SemiBold" /><Button Content="Очистить" HorizontalAlignment="Right" Click="ClearClipboard_Click" /></Grid>
-                                <TextBlock Grid.Row="1" Text="Нажмите на текст — он вставится в предыдущее окно. История хранится только локально." Foreground="{StaticResource MutedBrush}" Margin="0,5,0,12" />
-                                <ScrollViewer Grid.Row="2"><ItemsControl ItemsSource="{Binding ClipboardItems}"><ItemsControl.ItemTemplate><DataTemplate>
-                                    <Button Style="{StaticResource CardButton}" Tag="{Binding}" Click="PasteClipboard_Click"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="{Binding Preview}" MaxHeight="45" TextTrimming="CharacterEllipsis" /><TextBlock Grid.Column="1" Text="{Binding Time}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="10,0,0,0" /></Grid></Button>
-                                </DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer>
+                                <Grid>
+                                    <TextBlock Text="Буфер обмена" FontSize="21" FontWeight="SemiBold" FontFamily="{StaticResource DisplayFont}" VerticalAlignment="Center" />
+                                    <Button Content="Очистить" HorizontalAlignment="Right" Click="ClearClipboard_Click" FontSize="12" />
+                                </Grid>
+                                <TextBlock Grid.Row="1" Text="Нажмите на текст — он вставится в предыдущее окно. История хранится только локально."
+                                           Foreground="{StaticResource MutedBrush}" Margin="0,5,0,10" FontSize="11.5" />
+                                <ListBox Grid.Row="2" ItemsSource="{Binding ClipboardItems}" Style="{StaticResource VirtualList}" ItemTemplate="{StaticResource ClipboardTemplate}" />
                             </Grid>
 
+                            <!-- Загрузки -->
                             <Grid x:Name="FilesPanel" Visibility="Collapsed">
                                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                                <Grid><TextBlock Text="Недавние загрузки" FontSize="22" FontWeight="SemiBold" /><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="Обновить" Click="RefreshFiles_Click" /><Button Content="Папка" Click="OpenDownloads_Click" /></StackPanel></Grid>
-                                <ScrollViewer Grid.Row="1" Margin="0,12,0,0"><ItemsControl ItemsSource="{Binding Downloads}"><ItemsControl.ItemTemplate><DataTemplate>
-                                    <Border Background="{StaticResource CardBrush}" CornerRadius="11" Margin="0,0,0,7" Padding="6"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="48" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                        <Border Width="38" Height="38" CornerRadius="9" Background="{DynamicResource AccentBrush}" Margin="5,0"><TextBlock Text="{Binding Extension}" FontSize="9" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" /><TextBlock Text="{Binding Details}" FontSize="11" Foreground="{StaticResource MutedBrush}" /></StackPanel>
-                                        <StackPanel Grid.Column="2" Orientation="Horizontal"><Button Style="{StaticResource IconButton}" Content="&#xE8A7;" Tag="{Binding}" Click="OpenFile_Click" ToolTip="Открыть" /><Button Style="{StaticResource IconButton}" Content="&#xE838;" Tag="{Binding}" Click="RevealFile_Click" ToolTip="Показать в папке" /></StackPanel>
-                                    </Grid></Border>
-                                </DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer>
+                                <Grid>
+                                    <TextBlock Text="Недавние загрузки" FontSize="21" FontWeight="SemiBold" FontFamily="{StaticResource DisplayFont}" VerticalAlignment="Center" />
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="Обновить" Click="RefreshFiles_Click" FontSize="12" />
+                                        <Button Content="Папка" Click="OpenDownloads_Click" FontSize="12" />
+                                    </StackPanel>
+                                </Grid>
+                                <ListBox Grid.Row="1" Margin="0,10,0,0" ItemsSource="{Binding Downloads}" Style="{StaticResource VirtualList}" ItemTemplate="{StaticResource FileTemplate}" />
                             </Grid>
 
+                            <!-- Погода -->
                             <Grid x:Name="WeatherPanel" Visibility="Collapsed">
                                 <StackPanel>
-                                    <Grid><TextBlock Text="Погода" FontSize="22" FontWeight="SemiBold" /><Button Style="{StaticResource IconButton}" Content="&#xE72C;" HorizontalAlignment="Right" Click="RefreshWeather_Click" /></Grid>
-                                    <Border Background="{StaticResource CardBrush}" CornerRadius="18" Padding="22" Margin="0,14,0,12">
-                                        <StackPanel><TextBlock Text="{Binding Weather.City}" FontSize="17" /><Grid Margin="0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="{Binding Weather.Icon}" FontSize="62" VerticalAlignment="Center" Margin="0,0,20,0" /><StackPanel Grid.Column="1"><TextBlock Text="{Binding Weather.Temperature}" FontSize="46" FontWeight="Light" /><TextBlock Text="{Binding Weather.Condition}" Foreground="{StaticResource MutedBrush}" /></StackPanel></Grid><TextBlock Text="{Binding Weather.Details}" Foreground="{StaticResource MutedBrush}" LineHeight="23" /><TextBlock Text="{Binding Weather.Updated}" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,12,0,0" /></StackPanel>
+                                    <Grid>
+                                        <TextBlock Text="Погода" FontSize="21" FontWeight="SemiBold" FontFamily="{StaticResource DisplayFont}" VerticalAlignment="Center" />
+                                        <Button Style="{StaticResource IconButton}" Content="&#xE72C;" HorizontalAlignment="Right" Click="RefreshWeather_Click" ToolTip="Обновить погоду" />
+                                    </Grid>
+                                    <Border Background="{StaticResource CardBrush}" CornerRadius="18" Padding="20" Margin="0,12,0,11">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Weather.City}" FontSize="16" />
+                                            <Grid Margin="0,6,0,0">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Weather.Icon}" FontSize="58" VerticalAlignment="Center" Margin="0,0,18,0" Width="64" TextAlignment="Center" />
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Weather.Temperature}" FontSize="40" FontWeight="Light" FontFamily="{StaticResource DisplayFont}" TextWrapping="NoWrap" />
+                                                    <TextBlock Text="{Binding Weather.Condition}" Foreground="{StaticResource MutedBrush}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                            </Grid>
+                                            <TextBlock Text="{Binding Weather.Details}" Foreground="{StaticResource MutedBrush}" LineHeight="21" FontSize="12" Margin="0,4,0,0" />
+                                            <TextBlock Text="{Binding Weather.Updated}" FontSize="10.5" Foreground="{StaticResource MutedBrush}" Margin="0,10,0,0" />
+                                        </StackPanel>
                                     </Border>
-                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBox x:Name="WeatherCityInput" Text="{Binding Settings.WeatherCity, Mode=TwoWay}" /><Button Grid.Column="1" Style="{StaticResource PrimaryButton}" Content="Узнать погоду" Margin="8,0,0,0" Click="RefreshWeather_Click" /></Grid>
-                                    <TextBlock Text="Данные: OpenWeatherMap · обновление по запросу и раз в 30 минут" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,10,0,0" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <TextBox x:Name="WeatherCityInput" Text="{Binding Settings.WeatherCity, Mode=TwoWay}" ToolTip="Город для OpenWeatherMap" />
+                                        <Button Grid.Column="1" Style="{StaticResource PrimaryButton}" Content="Узнать погоду" Margin="8,0,0,0" Click="RefreshWeather_Click" />
+                                    </Grid>
+                                    <TextBlock Text="Данные: OpenWeatherMap · обновление по запросу и раз в 30 минут" FontSize="10.5" Foreground="{StaticResource MutedBrush}" Margin="0,9,0,0" />
                                 </StackPanel>
                             </Grid>
 
+                            <!-- Настройки -->
                             <ScrollViewer x:Name="SettingsPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
                                 <StackPanel>
-                                    <TextBlock Text="Настройки" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,12" />
-                                    <TextBlock Text="Внешний вид" FontWeight="SemiBold" FontSize="16" />
-                                    <TextBlock Text="Маленькая пилюля появляется при наведении. Размеры панели меняются сразу." FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,5" />
-                                    <Grid Margin="0,5"><Grid.ColumnDefinitions><ColumnDefinition Width="120" /><ColumnDefinition Width="*" /><ColumnDefinition Width="45" /></Grid.ColumnDefinitions><TextBlock Text="Ширина пилюли" VerticalAlignment="Center" /><Slider Grid.Column="1" Minimum="210" Maximum="420" Value="{Binding Settings.IslandWidth, Mode=TwoWay}" /><TextBlock Grid.Column="2" Text="{Binding Settings.IslandWidth, StringFormat=F0}" HorizontalAlignment="Right" Foreground="{StaticResource MutedBrush}" /></Grid>
-                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="120" /><ColumnDefinition Width="*" /><ColumnDefinition Width="45" /></Grid.ColumnDefinitions><TextBlock Text="Высота пилюли" VerticalAlignment="Center" /><Slider Grid.Column="1" Minimum="34" Maximum="58" Value="{Binding Settings.IslandHeight, Mode=TwoWay}" /><TextBlock Grid.Column="2" Text="{Binding Settings.IslandHeight, StringFormat=F0}" HorizontalAlignment="Right" Foreground="{StaticResource MutedBrush}" /></Grid>
-                                    <Grid Margin="0,8,0,5"><Grid.ColumnDefinitions><ColumnDefinition Width="120" /><ColumnDefinition Width="*" /><ColumnDefinition Width="45" /></Grid.ColumnDefinitions><TextBlock Text="Ширина панели" VerticalAlignment="Center" /><Slider Grid.Column="1" Minimum="640" Maximum="1100" Value="{Binding Settings.ExpandedWidth, Mode=TwoWay}" /><TextBlock Grid.Column="2" Text="{Binding Settings.ExpandedWidth, StringFormat=F0}" HorizontalAlignment="Right" Foreground="{StaticResource MutedBrush}" /></Grid>
-                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="120" /><ColumnDefinition Width="*" /><ColumnDefinition Width="45" /></Grid.ColumnDefinitions><TextBlock Text="Высота панели" VerticalAlignment="Center" /><Slider Grid.Column="1" Minimum="420" Maximum="700" Value="{Binding Settings.ExpandedHeight, Mode=TwoWay}" /><TextBlock Grid.Column="2" Text="{Binding Settings.ExpandedHeight, StringFormat=F0}" HorizontalAlignment="Right" Foreground="{StaticResource MutedBrush}" /></Grid>
-                                    <Grid Margin="0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="120" /><ColumnDefinition Width="*" /><ColumnDefinition Width="45" /></Grid.ColumnDefinitions><TextBlock Text="Прозрачность" VerticalAlignment="Center" /><Slider Grid.Column="1" Minimum="0.7" Maximum="1" Value="{Binding Settings.Opacity, Mode=TwoWay}" TickFrequency="0.01" /><TextBlock Grid.Column="2" Text="{Binding Settings.Opacity, StringFormat=P0}" HorizontalAlignment="Right" Foreground="{StaticResource MutedBrush}" /></Grid>
-                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="120" /><ColumnDefinition Width="*" /><ColumnDefinition Width="45" /></Grid.ColumnDefinitions><TextBlock Text="Сдвиг" VerticalAlignment="Center" /><Slider Grid.Column="1" Minimum="-500" Maximum="500" Value="{Binding Settings.HorizontalOffset, Mode=TwoWay}" /><TextBlock Grid.Column="2" Text="{Binding Settings.HorizontalOffset, StringFormat=F0}" HorizontalAlignment="Right" Foreground="{StaticResource MutedBrush}" /></Grid>
-                                    <StackPanel Orientation="Horizontal" Margin="0,12,0,4"><TextBlock Text="Акцент" VerticalAlignment="Center" Width="120" /><StackPanel Orientation="Horizontal"><Button Width="30" Height="30" Padding="0" Background="#8B7CFF" Tag="#8B7CFF" Click="Accent_Click" Margin="0,0,7,0" /><Button Width="30" Height="30" Padding="0" Background="#32D74B" Tag="#32D74B" Click="Accent_Click" Margin="0,0,7,0" /><Button Width="30" Height="30" Padding="0" Background="#0A84FF" Tag="#0A84FF" Click="Accent_Click" Margin="0,0,7,0" /><Button Width="30" Height="30" Padding="0" Background="#FF9F0A" Tag="#FF9F0A" Click="Accent_Click" Margin="0,0,7,0" /><Button Width="30" Height="30" Padding="0" Background="#FF453A" Tag="#FF453A" Click="Accent_Click" /></StackPanel></StackPanel>
-                                    <Grid Margin="0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="120" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="Экран" VerticalAlignment="Center" /><ComboBox Grid.Column="1" SelectedIndex="0" x:Name="ScreenModeCombo" SelectionChanged="ScreenMode_Changed"><ComboBoxItem Content="Под курсором" Tag="cursor" /><ComboBoxItem Content="Основной" Tag="primary" /></ComboBox></Grid>
-                                    <CheckBox Content="Показывать погоду в пилюле" IsChecked="{Binding Settings.ShowWeatherInPill, Mode=TwoWay}" Checked="WeatherPill_Changed" Unchecked="WeatherPill_Changed" />
-                                    <CheckBox Content="Раскрывать при курсоре у верхней кромки" IsChecked="{Binding Settings.HotCornerEnabled, Mode=TwoWay}" />
-                                    <CheckBox Content="Показывать островок при смене трека" IsChecked="{Binding Settings.ShowMediaPopup, Mode=TwoWay}" />
-                                    <CheckBox Content="Запускать вместе с Windows" IsChecked="{Binding Settings.LaunchAtStartup, Mode=TwoWay}" />
-                                    <Separator Margin="0,12" Background="#20FFFFFF" />
-                                    <TextBlock Text="Панели" FontWeight="SemiBold" FontSize="16" />
-                                    <TextBlock Text="Отметьте нужные окна и меняйте их порядок стрелками." FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,3,0,7" />
-                                    <ItemsControl ItemsSource="{Binding PanelOptions}"><ItemsControl.ItemTemplate><DataTemplate>
-                                        <Border Background="{StaticResource CardBrush}" CornerRadius="9" Padding="8,4" Margin="0,0,0,4"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><CheckBox Content="{Binding Title}" IsChecked="{Binding IsVisible, Mode=TwoWay}" Checked="PanelToggle_Changed" Unchecked="PanelToggle_Changed" Margin="3,0" /><StackPanel Grid.Column="1" Orientation="Horizontal"><Button Style="{StaticResource IconButton}" Content="&#xE74A;" Width="30" Height="28" Tag="{Binding}" Click="PanelUp_Click" ToolTip="Выше" /><Button Style="{StaticResource IconButton}" Content="&#xE74B;" Width="30" Height="28" Tag="{Binding}" Click="PanelDown_Click" ToolTip="Ниже" /></StackPanel></Grid></Border>
-                                    </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
-                                    <Separator Margin="0,12" Background="#20FFFFFF" />
-                                    <TextBlock Text="Быстрая папка" FontWeight="SemiBold" FontSize="16" />
-                                    <TextBlock Text="Папка, файлы которой открываются на панели «Быстрые файлы»." FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,3,0,6" />
-                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBox x:Name="QuickFolderInput" Text="{Binding Settings.QuickFolder, Mode=TwoWay}" /><Button Grid.Column="1" Content="Выбрать" Click="ChooseQuickFolder_Click" Margin="7,0,0,0" /><Button Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE8A7;" Click="OpenQuickFolder_Click" Margin="5,0,0,0" ToolTip="Открыть папку" /></Grid>
-                                    <Separator Margin="0,12" Background="#20FFFFFF" />
-                                    <TextBlock Text="Напоминания" FontWeight="SemiBold" FontSize="16" />
-                                    <TextBlock Text="Напоминание держится на экране, пока вы не нажмёте «Выполнено» или «Отложить»." FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,3,0,6" />
-                                    <CheckBox Content="Звуковой сигнал при напоминании" IsChecked="{Binding Settings.ReminderSound, Mode=TwoWay}" />
-                                    <Grid Margin="0,6,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="120" /><ColumnDefinition Width="*" /><ColumnDefinition Width="45" /></Grid.ColumnDefinitions><TextBlock Text="Отложить на" VerticalAlignment="Center" /><ComboBox Grid.Column="1" x:Name="SnoozeCombo" SelectedIndex="1" SelectionChanged="Snooze_Changed"><ComboBoxItem Content="5 минут" Tag="5" /><ComboBoxItem Content="10 минут" Tag="10" /><ComboBoxItem Content="15 минут" Tag="15" /><ComboBoxItem Content="30 минут" Tag="30" /><ComboBoxItem Content="1 час" Tag="60" /></ComboBox></Grid>
-                                    <Grid Margin="0,6,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="120" /><ColumnDefinition Width="*" /><ColumnDefinition Width="45" /></Grid.ColumnDefinitions><TextBlock Text="Сигнал" VerticalAlignment="Center" /><ComboBox Grid.Column="1" x:Name="ReminderToneCombo" SelectedIndex="0" SelectionChanged="ReminderTone_Changed"><ComboBoxItem Content="Мягкий" Tag="soft" /><ComboBoxItem Content="Двойной" Tag="double" /><ComboBoxItem Content="Тихий" Tag="quiet" /></ComboBox></Grid>
-                                    <Separator Margin="0,12" Background="#20FFFFFF" />
-                                    <TextBlock Text="AI и OpenAI-совместимые API" FontWeight="SemiBold" FontSize="16" />
-                                    <TextBlock Text="Можно указать RouterAI, OpenAI или любой совместимый локальный сервер." FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,3,0,6" />
-                                    <TextBox x:Name="AiBaseUrlInput" Text="{Binding Settings.AiBaseUrl, Mode=TwoWay}" ToolTip="Base URL, например https://api.openai.com/v1" />
-                                    <Grid Margin="0,6,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="1.2*" /></Grid.ColumnDefinitions><TextBox x:Name="AiProviderInput" Text="{Binding Settings.AiProvider, Mode=TwoWay}" ToolTip="Название провайдера" /><TextBox x:Name="AiModelInput" Grid.Column="1" Text="{Binding Settings.AiModel, Mode=TwoWay}" Margin="6,0,0,0" ToolTip="Модель" /></Grid>
-                                    <PasswordBox x:Name="AiKeyInput" PasswordChanged="Credentials_Changed" Margin="0,6,0,0" />
-                                    <Grid Margin="0,7,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><Button Content="Сохранить ключ и загрузить модели" Click="SaveAi_Click" /><TextBlock x:Name="AiStatus" Grid.Column="1" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="10,0,0,0" /></Grid>
-                                    <Separator Margin="0,12" Background="#20FFFFFF" />
-                                    <TextBlock Text="OpenWeatherMap" FontWeight="SemiBold" FontSize="16" />
-                                    <TextBlock Text="Ключ OpenWeatherMap хранится локально с шифрованием Windows DPAPI." FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,3,0,6" />
-                                    <PasswordBox x:Name="WeatherKeyInput" PasswordChanged="Credentials_Changed" />
-                                    <Button Content="Сохранить ключ OpenWeatherMap" HorizontalAlignment="Left" Click="SaveWeatherKey_Click" Margin="0,7,0,0" />
-                                    <TextBlock x:Name="WeatherStatus" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,0" />
-                                    <Separator Margin="0,12" Background="#20FFFFFF" />
-                                    <TextBlock Text="Состояние" FontWeight="SemiBold" FontSize="16" />
-                                    <TextBlock x:Name="SystemStatus" Foreground="{StaticResource MutedBrush}" Margin="0,6" />
-                                    <StackPanel Orientation="Horizontal"><Button Content="Доступ к уведомлениям" Click="NotificationSettings_Click" /><Button Content="Выход" Click="Exit_Click" Foreground="#FF8A80" /></StackPanel>
-                                    <TextBlock Text="Dynamic Island для Windows · .NET 8 · сетевые запросы только по вашим действиям" FontSize="10" Foreground="{StaticResource MutedBrush}" Margin="0,14,0,10" />
+                                    <TextBlock Text="Настройки" FontSize="21" FontWeight="SemiBold" FontFamily="{StaticResource DisplayFont}" Margin="0,0,0,10" />
+
+                                    <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                                        <StackPanel>
+                                            <TextBlock Text="Внешний вид" Style="{StaticResource SectionTitle}" />
+                                            <TextBlock Text="Размеры пилюли и панели применяются сразу." Style="{StaticResource SectionHint}" />
+                                            <Grid Margin="0,1,0,4">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /><ColumnDefinition Width="46" /></Grid.ColumnDefinitions>
+                                                <TextBlock Text="Ширина пилюли" Style="{StaticResource RowLabel}" />
+                                                <Slider Grid.Column="1" Minimum="210" Maximum="420" Value="{Binding Settings.IslandWidth, Mode=TwoWay}" />
+                                                <Border Grid.Column="2" Style="{StaticResource ValueChip}"><TextBlock Style="{StaticResource ChipText}" Text="{Binding Settings.IslandWidth, StringFormat=F0}" /></Border>
+                                            </Grid>
+                                            <Grid Margin="0,1,0,4">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /><ColumnDefinition Width="46" /></Grid.ColumnDefinitions>
+                                                <TextBlock Text="Высота пилюли" Style="{StaticResource RowLabel}" />
+                                                <Slider Grid.Column="1" Minimum="34" Maximum="58" Value="{Binding Settings.IslandHeight, Mode=TwoWay}" />
+                                                <Border Grid.Column="2" Style="{StaticResource ValueChip}"><TextBlock Style="{StaticResource ChipText}" Text="{Binding Settings.IslandHeight, StringFormat=F0}" /></Border>
+                                            </Grid>
+                                            <Grid Margin="0,1,0,4">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /><ColumnDefinition Width="46" /></Grid.ColumnDefinitions>
+                                                <TextBlock Text="Ширина панели" Style="{StaticResource RowLabel}" />
+                                                <Slider Grid.Column="1" Minimum="640" Maximum="1100" Value="{Binding Settings.ExpandedWidth, Mode=TwoWay}" />
+                                                <Border Grid.Column="2" Style="{StaticResource ValueChip}"><TextBlock Style="{StaticResource ChipText}" Text="{Binding Settings.ExpandedWidth, StringFormat=F0}" /></Border>
+                                            </Grid>
+                                            <Grid Margin="0,1,0,4">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /><ColumnDefinition Width="46" /></Grid.ColumnDefinitions>
+                                                <TextBlock Text="Высота панели" Style="{StaticResource RowLabel}" />
+                                                <Slider Grid.Column="1" Minimum="420" Maximum="700" Value="{Binding Settings.ExpandedHeight, Mode=TwoWay}" />
+                                                <Border Grid.Column="2" Style="{StaticResource ValueChip}"><TextBlock Style="{StaticResource ChipText}" Text="{Binding Settings.ExpandedHeight, StringFormat=F0}" /></Border>
+                                            </Grid>
+                                            <Grid Margin="0,1,0,4">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /><ColumnDefinition Width="46" /></Grid.ColumnDefinitions>
+                                                <TextBlock Text="Прозрачность" Style="{StaticResource RowLabel}" />
+                                                <Slider Grid.Column="1" Minimum="0.7" Maximum="1" Value="{Binding Settings.Opacity, Mode=TwoWay}" TickFrequency="0.01" />
+                                                <Border Grid.Column="2" Style="{StaticResource ValueChip}"><TextBlock Style="{StaticResource ChipText}" Text="{Binding Settings.Opacity, StringFormat=P0}" /></Border>
+                                            </Grid>
+                                            <Grid Margin="0,1,0,8">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /><ColumnDefinition Width="46" /></Grid.ColumnDefinitions>
+                                                <TextBlock Text="Сдвиг" Style="{StaticResource RowLabel}" />
+                                                <Slider Grid.Column="1" Minimum="-500" Maximum="500" Value="{Binding Settings.HorizontalOffset, Mode=TwoWay}" />
+                                                <Border Grid.Column="2" Style="{StaticResource ValueChip}"><TextBlock Style="{StaticResource ChipText}" Text="{Binding Settings.HorizontalOffset, StringFormat=F0}" /></Border>
+                                            </Grid>
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <TextBlock Text="Акцент" Style="{StaticResource RowLabel}" />
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                    <Button Width="26" Height="26" Padding="0" Background="#8B7CFF" Tag="#8B7CFF" Click="Accent_Click" Margin="0,0,7,0" ToolTip="Лиловый" />
+                                                    <Button Width="26" Height="26" Padding="0" Background="#32D74B" Tag="#32D74B" Click="Accent_Click" Margin="0,0,7,0" ToolTip="Зелёный" />
+                                                    <Button Width="26" Height="26" Padding="0" Background="#0A84FF" Tag="#0A84FF" Click="Accent_Click" Margin="0,0,7,0" ToolTip="Синий" />
+                                                    <Button Width="26" Height="26" Padding="0" Background="#FF9F0A" Tag="#FF9F0A" Click="Accent_Click" Margin="0,0,7,0" ToolTip="Оранжевый" />
+                                                    <Button Width="26" Height="26" Padding="0" Background="#FF453A" Tag="#FF453A" Click="Accent_Click" ToolTip="Красный" />
+                                                </StackPanel>
+                                            </Grid>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <TextBlock Text="Экран" Style="{StaticResource RowLabel}" />
+                                                <ComboBox Grid.Column="1" SelectedIndex="0" x:Name="ScreenModeCombo" SelectionChanged="ScreenMode_Changed">
+                                                    <ComboBoxItem Content="Под курсором" Tag="cursor" />
+                                                    <ComboBoxItem Content="Основной" Tag="primary" />
+                                                </ComboBox>
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                                        <StackPanel>
+                                            <TextBlock Text="Поведение" Style="{StaticResource SectionTitle}" />
+                                            <TextBlock Text="Что показывать и когда раскрываться." Style="{StaticResource SectionHint}" />
+                                            <CheckBox Content="Показывать погоду в пилюле" IsChecked="{Binding Settings.ShowWeatherInPill, Mode=TwoWay}" Checked="WeatherPill_Changed" Unchecked="WeatherPill_Changed" />
+                                            <CheckBox Content="Раскрывать при курсоре у верхней кромки" IsChecked="{Binding Settings.HotCornerEnabled, Mode=TwoWay}" />
+                                            <CheckBox Content="Показывать островок при смене трека" IsChecked="{Binding Settings.ShowMediaPopup, Mode=TwoWay}" />
+                                            <CheckBox Content="Запускать вместе с Windows" IsChecked="{Binding Settings.LaunchAtStartup, Mode=TwoWay}" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                                        <StackPanel>
+                                            <TextBlock Text="Панели" Style="{StaticResource SectionTitle}" />
+                                            <TextBlock Text="Отметьте нужные окна и меняйте их порядок стрелками." Style="{StaticResource SectionHint}" />
+                                            <ItemsControl ItemsSource="{Binding PanelOptions}">
+                                                <ItemsControl.ItemTemplate><DataTemplate>
+                                                    <Border Background="#1CFFFFFF" CornerRadius="10" Padding="9,3" Margin="0,0,0,4">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                            <CheckBox Content="{Binding Title}" IsChecked="{Binding IsVisible, Mode=TwoWay}" Checked="PanelToggle_Changed" Unchecked="PanelToggle_Changed" Margin="2,0" />
+                                                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                                <Button Style="{StaticResource IconButton}" Content="&#xE74A;" Width="28" Height="26" FontSize="12" Tag="{Binding}" Click="PanelUp_Click" ToolTip="Выше" />
+                                                                <Button Style="{StaticResource IconButton}" Content="&#xE74B;" Width="28" Height="26" FontSize="12" Tag="{Binding}" Click="PanelDown_Click" ToolTip="Ниже" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate></ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                                        <StackPanel>
+                                            <TextBlock Text="Быстрая папка" Style="{StaticResource SectionTitle}" />
+                                            <TextBlock Text="Файлы этой папки открываются на панели «Быстрые файлы»." Style="{StaticResource SectionHint}" />
+                                            <Grid>
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                <TextBox x:Name="QuickFolderInput" Text="{Binding Settings.QuickFolder, Mode=TwoWay}" />
+                                                <Button Grid.Column="1" Content="Выбрать" Click="ChooseQuickFolder_Click" Margin="7,0,0,0" FontSize="12" />
+                                                <Button Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE8A7;" Width="32" Height="30" FontSize="14" Click="OpenQuickFolder_Click" Margin="5,0,0,0" ToolTip="Открыть папку" />
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                                        <StackPanel>
+                                            <TextBlock Text="Напоминания" Style="{StaticResource SectionTitle}" />
+                                            <TextBlock Text="Попап держится на экране, пока вы не нажмёте «Выполнено» или «Отложить»." Style="{StaticResource SectionHint}" />
+                                            <CheckBox Content="Звуковой сигнал при напоминании" IsChecked="{Binding Settings.ReminderSound, Mode=TwoWay}" />
+                                            <Grid Margin="0,4,0,0">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <TextBlock Text="Отложить на" Style="{StaticResource RowLabel}" />
+                                                <ComboBox Grid.Column="1" x:Name="SnoozeCombo" SelectedIndex="1" SelectionChanged="Snooze_Changed" Margin="0,0,0,4">
+                                                    <ComboBoxItem Content="5 минут" Tag="5" /><ComboBoxItem Content="10 минут" Tag="10" /><ComboBoxItem Content="15 минут" Tag="15" /><ComboBoxItem Content="30 минут" Tag="30" /><ComboBoxItem Content="1 час" Tag="60" />
+                                                </ComboBox>
+                                            </Grid>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <TextBlock Text="Сигнал" Style="{StaticResource RowLabel}" />
+                                                <ComboBox Grid.Column="1" x:Name="ReminderToneCombo" SelectedIndex="0" SelectionChanged="ReminderTone_Changed">
+                                                    <ComboBoxItem Content="Мягкий" Tag="soft" /><ComboBoxItem Content="Двойной" Tag="double" /><ComboBoxItem Content="Тихий" Tag="quiet" />
+                                                </ComboBox>
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                                        <StackPanel>
+                                            <TextBlock Text="AI и OpenAI-совместимые API" Style="{StaticResource SectionTitle}" />
+                                            <TextBlock Text="RouterAI, OpenAI или любой совместимый локальный сервер." Style="{StaticResource SectionHint}" />
+                                            <TextBox x:Name="AiBaseUrlInput" Text="{Binding Settings.AiBaseUrl, Mode=TwoWay}" ToolTip="Base URL, например https://api.openai.com/v1" />
+                                            <Grid Margin="0,6,0,0">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="1.2*" /></Grid.ColumnDefinitions>
+                                                <TextBox x:Name="AiProviderInput" Text="{Binding Settings.AiProvider, Mode=TwoWay}" ToolTip="Название провайдера" />
+                                                <TextBox x:Name="AiModelInput" Grid.Column="1" Text="{Binding Settings.AiModel, Mode=TwoWay}" Margin="6,0,0,0" ToolTip="Модель" />
+                                            </Grid>
+                                            <PasswordBox x:Name="AiKeyInput" PasswordChanged="Credentials_Changed" Margin="0,6,0,0" ToolTip="Ключ API хранится локально с шифрованием DPAPI" />
+                                            <Grid Margin="0,7,0,0">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <Button Content="Сохранить ключ и загрузить модели" Click="SaveAi_Click" FontSize="12" />
+                                                <TextBlock x:Name="AiStatus" Grid.Column="1" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="10,0,0,0" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                                        <StackPanel>
+                                            <TextBlock Text="OpenWeatherMap" Style="{StaticResource SectionTitle}" />
+                                            <TextBlock Text="Ключ хранится локально с шифрованием Windows DPAPI." Style="{StaticResource SectionHint}" />
+                                            <PasswordBox x:Name="WeatherKeyInput" PasswordChanged="Credentials_Changed" />
+                                            <Button Content="Сохранить ключ OpenWeatherMap" HorizontalAlignment="Left" Click="SaveWeatherKey_Click" Margin="0,7,0,0" FontSize="12" />
+                                            <TextBlock x:Name="WeatherStatus" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,0" FontSize="11" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                                        <StackPanel>
+                                            <TextBlock Text="Состояние" Style="{StaticResource SectionTitle}" />
+                                            <TextBlock x:Name="SystemStatus" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,8" FontSize="11.5" />
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Content="Доступ к уведомлениям" Click="NotificationSettings_Click" FontSize="12" />
+                                                <Button Content="Выход" Click="Exit_Click" Foreground="#FF8A80" Margin="6,0,0,0" FontSize="12" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                    <TextBlock Text="Dynamic Island для Windows · .NET 8 · сетевые запросы только по вашим действиям" FontSize="10" Foreground="{StaticResource MutedBrush}" Margin="2,2,0,10" />
                                 </StackPanel>
                             </ScrollViewer>
                         </Grid>
@@ -388,6 +695,61 @@
                     <TextBlock x:Name="AgentStatus" Grid.Row="2" Foreground="{StaticResource MutedBrush}" FontSize="10" VerticalAlignment="Center" Margin="16,0" TextTrimming="CharacterEllipsis" />
                 </Grid>
 
+                <!-- Пикер даты для напоминания -->
+                <Popup x:Name="ReminderDatePopup" AllowsTransparency="True" StaysOpen="False" PopupAnimation="Fade"
+                       PlacementTarget="{Binding ElementName=ReminderDateButton}" Placement="Bottom" VerticalOffset="6">
+                    <Border Style="{StaticResource PopupCard}" Width="246">
+                        <StackPanel>
+                            <Grid Margin="2,0,2,6">
+                                <TextBlock x:Name="PickerMonthText" FontWeight="SemiBold" VerticalAlignment="Center" FontSize="12.5" />
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button Style="{StaticResource IconButton}" Content="&#xE76B;" Width="26" Height="24" FontSize="11" Click="PickerPrev_Click" ToolTip="Предыдущий месяц" />
+                                    <Button Style="{StaticResource IconButton}" Content="&#xE76C;" Width="26" Height="24" FontSize="11" Click="PickerNext_Click" ToolTip="Следующий месяц" />
+                                </StackPanel>
+                            </Grid>
+                            <UniformGrid Columns="7" Margin="0,0,0,3">
+                                <TextBlock Text="Пн" FontSize="9.5" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" />
+                                <TextBlock Text="Вт" FontSize="9.5" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" />
+                                <TextBlock Text="Ср" FontSize="9.5" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" />
+                                <TextBlock Text="Чт" FontSize="9.5" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" />
+                                <TextBlock Text="Пт" FontSize="9.5" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" />
+                                <TextBlock Text="Сб" FontSize="9.5" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" />
+                                <TextBlock Text="Вс" FontSize="9.5" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" />
+                            </UniformGrid>
+                            <ItemsControl x:Name="PickerGrid">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="7" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate><DataTemplate>
+                                    <Button Click="PickerDay_Click" Height="26" Margin="1" Padding="0" Tag="{Binding Date}" Background="{Binding Background}"
+                                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                                        <TextBlock Text="{Binding Day}" FontSize="11" Foreground="{Binding Foreground}" Opacity="{Binding Opacity}" />
+                                    </Button>
+                                </DataTemplate></ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Grid Margin="2,6,2,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Button Content="Сегодня" Click="PickerToday_Click" FontSize="11" Height="26" />
+                                <Button Grid.Column="1" Content="Завтра" Click="PickerTomorrow_Click" FontSize="11" Height="26" Margin="4,0,0,0" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </Popup>
+
+                <!-- Пикер времени для напоминания -->
+                <Popup x:Name="ReminderTimePopup" AllowsTransparency="True" StaysOpen="False" PopupAnimation="Fade"
+                       PlacementTarget="{Binding ElementName=ReminderTimeButton}" Placement="Bottom" VerticalOffset="6">
+                    <Border Style="{StaticResource PopupCard}" Width="196">
+                        <StackPanel>
+                            <TextBlock Text="Время с шагом 30 минут" FontSize="10.5" Foreground="{StaticResource MutedBrush}" Margin="3,0,0,5" />
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="196">
+                                <ItemsControl x:Name="TimeSlotList" ItemTemplate="{StaticResource TimeSlotTemplate}">
+                                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </StackPanel>
+                    </Border>
+                </Popup>
+
+                <!-- Попап напоминания -->
                 <Border x:Name="ReminderPopup" Visibility="Collapsed" HorizontalAlignment="Stretch" VerticalAlignment="Top" Margin="8,8,8,8"
                         Background="#F21B1B22" CornerRadius="18" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1" Padding="16,12">
                     <StackPanel>
@@ -414,10 +776,21 @@
                     </StackPanel>
                 </Border>
 
+                <!-- Тост уведомления -->
                 <Button x:Name="ToastPanel" Visibility="Collapsed" Background="Transparent" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Padding="20,16" Click="Toast_Click">
-                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="45" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                        <Border Width="38" Height="38" CornerRadius="11" Background="{DynamicResource AccentBrush}" VerticalAlignment="Top"><TextBlock x:Name="ToastInitial" Text="•" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                        <StackPanel Grid.Column="1"><Grid><TextBlock x:Name="ToastApp" Foreground="{StaticResource MutedBrush}" FontSize="11" /><TextBlock x:Name="ToastTime" Foreground="{StaticResource MutedBrush}" FontSize="11" HorizontalAlignment="Right" /></Grid><TextBlock x:Name="ToastTitle" FontWeight="SemiBold" FontSize="15" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" MaxHeight="23" /><TextBlock x:Name="ToastBody" Foreground="{StaticResource MutedBrush}" MaxHeight="42" TextTrimming="CharacterEllipsis" /></StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="45" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <Border Width="38" Height="38" CornerRadius="11" Background="{DynamicResource AccentBrush}" VerticalAlignment="Top">
+                            <TextBlock x:Name="ToastInitial" Text="•" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel Grid.Column="1">
+                            <Grid>
+                                <TextBlock x:Name="ToastApp" Foreground="{StaticResource MutedBrush}" FontSize="11" />
+                                <TextBlock x:Name="ToastTime" Foreground="{StaticResource MutedBrush}" FontSize="11" HorizontalAlignment="Right" />
+                            </Grid>
+                            <TextBlock x:Name="ToastTitle" FontWeight="SemiBold" FontSize="15" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" MaxHeight="23" />
+                            <TextBlock x:Name="ToastBody" Foreground="{StaticResource MutedBrush}" MaxHeight="42" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
                     </Grid>
                 </Button>
             </Grid>

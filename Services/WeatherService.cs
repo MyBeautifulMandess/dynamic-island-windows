@@ -1,14 +1,17 @@
 using System.Net.Http;
 using System.Text.Json;
-using DynamicIsland.Models;
 
 namespace DynamicIsland.Services;
 
+public sealed record WeatherReading(string City, double Temperature, string Condition, string Details, string Icon);
+
 public sealed class WeatherService
 {
+    // Один экземпляр на процесс: HttpClient не пересоздаётся, соединения
+    // переиспользуются, а сокеты не остаются в TIME_WAIT.
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
 
-    public async Task<WeatherInfo> GetCurrentAsync(string key, string city, string language, CancellationToken token = default)
+    public async Task<WeatherReading> GetCurrentAsync(string key, string city, string language, CancellationToken token = default)
     {
         var url = "https://api.openweathermap.org/data/2.5/weather?units=metric&appid=" +
                   Uri.EscapeDataString(key.Trim()) + "&q=" + Uri.EscapeDataString(city.Trim()) +
@@ -37,16 +40,13 @@ public sealed class WeatherService
         var wind = root.GetProperty("wind");
         var sys = root.GetProperty("sys");
         var iconCode = weather.GetProperty("icon").GetString() ?? "";
-        return new WeatherInfo
-        {
-            City = $"{root.GetProperty("name").GetString()}, {sys.GetProperty("country").GetString()}",
-            Temperature = $"{main.GetProperty("temp").GetDouble():0.#}°",
-            Condition = weather.GetProperty("description").GetString() ?? "",
-            Details = $"Ощущается как {main.GetProperty("feels_like").GetDouble():0.#}°  ·  Влажность {main.GetProperty("humidity").GetInt32()}%\n" +
-                      $"Ветер {wind.GetProperty("speed").GetDouble():0.#} м/с  ·  Давление {main.GetProperty("pressure").GetDouble():0} гПа",
-            Icon = WeatherIcon(weather.GetProperty("id").GetInt32(), iconCode),
-            Updated = "Обновлено " + DateTime.Now.ToString("HH:mm")
-        };
+        return new WeatherReading(
+            $"{root.GetProperty("name").GetString()}, {sys.GetProperty("country").GetString()}",
+            main.GetProperty("temp").GetDouble(),
+            weather.GetProperty("description").GetString() ?? "",
+            $"Ощущается как {main.GetProperty("feels_like").GetDouble():0.#}°  ·  Влажность {main.GetProperty("humidity").GetInt32()}%\n" +
+            $"Ветер {wind.GetProperty("speed").GetDouble():0.#} м/с  ·  Давление {main.GetProperty("pressure").GetDouble():0} гПа",
+            WeatherIcon(weather.GetProperty("id").GetInt32(), iconCode));
     }
 
     private static string WeatherIcon(int code, string iconCode) => code switch

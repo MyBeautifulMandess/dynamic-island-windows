@@ -63,18 +63,40 @@ public sealed class MediaState : ObservableObject
 public sealed class WeatherInfo : ObservableObject
 {
     private string _city = "Погода";
-    private string _temperature = "—°";
+    private double? _temperatureValue;
     private string _condition = "Добавьте ключ OpenWeatherMap в настройках";
     private string _details = "";
     private string _icon = "☀";
     private string _updated = "";
+    private DateTime? _fetchedAt;
 
     public string City { get => _city; set => Set(ref _city, value); }
-    public string Temperature { get => _temperature; set => Set(ref _temperature, value); }
+
+    /// <summary>
+    /// Температура из ответа API. Строка для интерфейса вычисляется из неё, поэтому
+    /// подписка обновляется при любом изменении значения, а не только тогда, когда
+    /// совпала отформатированная строка.
+    /// </summary>
+    public double? TemperatureValue
+    {
+        get => _temperatureValue;
+        set { if (Set(ref _temperatureValue, value)) { Notify(nameof(Temperature)); Notify(nameof(TemperatureText)); } }
+    }
+
+    public string Temperature => TemperatureValue is { } value ? FormatDegrees(value) : "—°";
+    public string TemperatureText => TemperatureValue is { } value ? $"{FormatDegrees(value)}C" : "н/д";
     public string Condition { get => _condition; set => Set(ref _condition, value); }
     public string Details { get => _details; set => Set(ref _details, value); }
     public string Icon { get => _icon; set => Set(ref _icon, value); }
     public string Updated { get => _updated; set => Set(ref _updated, value); }
+    public DateTime? FetchedAt { get => _fetchedAt; set => Set(ref _fetchedAt, value); }
+
+    private static string FormatDegrees(double value)
+    {
+        var rounded = Math.Round(value, 1);
+        if (rounded == 0) rounded = 0;
+        return rounded.ToString("0.#", System.Globalization.CultureInfo.CurrentCulture) + "°";
+    }
 }
 
 public sealed record AgentPreset(string Name, string Description, string Prompt)

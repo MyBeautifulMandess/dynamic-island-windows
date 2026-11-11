@@ -136,10 +136,39 @@ public sealed class NotificationService : IDisposable
         return new NotificationItem(notification.Id, appName, title, body, notification.CreationTime.LocalDateTime);
     }
 
+    public IReadOnlyList<NotificationItem> Items =>
+        _items.Values.OrderByDescending(x => x.Created).Take(50).ToArray();
+
     public void Dismiss(uint id)
     {
         try { _listener?.RemoveNotification(id); } catch { }
-        if (_items.Remove(id)) Changed?.Invoke(_items.Values.OrderByDescending(x => x.Created).ToArray());
+        if (_items.Remove(id)) NotifyChanged();
+    }
+
+    /// <summary>
+    /// Убирает все уведомления из Центра уведомлений Windows и из локального списка.
+    /// </summary>
+    public void ClearAll()
+    {
+        foreach (var id in _items.Keys.ToArray())
+        {
+            try { _listener?.RemoveNotification(id); } catch { }
+        }
+        var changed = _items.Count > 0;
+        _items.Clear();
+        _lastSnapshot = "";
+        if (changed)
+        {
+            Status = "Уведомления очищены";
+            Changed?.Invoke([]);
+        }
+    }
+
+    private void NotifyChanged()
+    {
+        var ordered = _items.Values.OrderByDescending(x => x.Created).Take(50).ToArray();
+        _lastSnapshot = string.Join('\u001f', ordered.Select(x => $"{x.Id}:{x.Title}:{x.Body}"));
+        Changed?.Invoke(ordered);
     }
 
     public void Dispose()

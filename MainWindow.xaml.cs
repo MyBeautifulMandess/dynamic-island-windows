@@ -44,6 +44,9 @@ public partial class MainWindow : Window
     private TrayIconService? _tray;
     private readonly List<FrameworkElement> _panels = [];
     private readonly Dictionary<string, FrameworkElement> _panelMap = [];
+    private readonly Dictionary<FrameworkElement, TranslateTransform> _panelTransforms = [];
+    private readonly ObservableCollection<CalendarDayItem> _pickerDays = [];
+    private readonly ObservableCollection<TimeSlot> _timeSlots = [];
     private IntPtr _windowHandle;
     private IntPtr _previousForeground;
     private CancellationTokenSource? _weatherCts;
@@ -57,14 +60,22 @@ public partial class MainWindow : Window
     private bool _seeking;
     private DateTime _expandedAt;
     private DateTime _fullScreenCheckedAt = DateTime.MinValue;
+    private DateTime _lastTrimAt = DateTime.MinValue;
+    private DispatcherTimer? _trimTimer;
+    private static readonly TimeSpan MinTrimInterval = TimeSpan.FromSeconds(60);
     private bool _fullScreenActive;
     private string _currentTab = "home";
     private DateTime _calendarMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     private DateTime _selectedDay = DateTime.Today;
+    private DateTime _pickerMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime _reminderDate = DateTime.Today;
+    private TimeSpan _reminderTime = new(9, 0, 0);
     private ReminderItem? _activeReminder;
+    private NoteItem? _editingNote;
     private readonly List<ReminderItem> _allReminders = [];
     private const double PopupWidth = 418;
     private const double PopupHeight = 158;
+    private const int TickMilliseconds = 160;
 
     public AppSettings Settings { get; }
     public Models.MediaState Media { get; } = new();
@@ -114,6 +125,9 @@ public partial class MainWindow : Window
         RenderCalendar();
         RenderReminders();
         BuildPanelOptions();
+        BuildTimeSlots();
+        RenderPicker();
+        UpdateReminderPickers();
 
         _notifications.Changed += items => Dispatcher.Invoke(() => UpdateNotifications(items));
         _notifications.Received += item => Dispatcher.Invoke(() => ShowToast(item));
@@ -139,7 +153,8 @@ public partial class MainWindow : Window
         _clockTimer.Tick += (_, _) => UpdateClock();
         _saveTimer.Tick += (_, _) => { _saveTimer.Stop(); SaveSettings(); };
         _weatherTimer.Tick += async (_, _) => await RefreshWeatherAsync(false);
-        _mediaTimer.Tick += (_, _) => AdvanceMediaPosition();        _brightnessTimer.Tick += async (_, _) =>
+        _mediaTimer.Tick += (_, _) => AdvanceMediaPosition();
+        _brightnessTimer.Tick += async (_, _) =>
         {
             _brightnessTimer.Stop();
             await _system.SetBrightnessAsync((int)BrightnessSlider.Value);
@@ -208,7 +223,6 @@ public partial class MainWindow : Window
         _systemUpdating = false;
         _quickFiles.Refresh();
         _reminderTimer.Start();
-        ReminderDateInput.Text = DateTime.Today.ToString("dd.MM.yyyy");
         ReminderSnoozeCombo.SelectedIndex = SnoozeIndex(Settings.SnoozeMinutes);
         SnoozeCombo.SelectedIndex = SnoozeIndex(Settings.SnoozeMinutes);
         ReminderToneCombo.SelectedIndex = Settings.ReminderTone switch { "double" => 1, "quiet" => 2, _ => 0 };
@@ -257,6 +271,7 @@ public partial class MainWindow : Window
                 Content = PanelCatalog.Glyph(option.Id),
                 Width = 27,
                 Height = 38,
+                FontSize = 14,
                 Tag = option.Id,
                 ToolTip = option.Title,
                 FontFamily = (System.Windows.Media.FontFamily)Application.Current.Resources["IconFont"]
@@ -565,7 +580,7 @@ public partial class MainWindow : Window
             return;
         }
         if (!IsVisible) { PositionWindow(); return; }
-        if (!animate) { Hide(); PositionWindow(); return; }
+        if (!animate) { Hide(); PositionWindow(); TrimMemory(); return; }
         AnimateOut(150, () =>
         {
             // A reminder or a toast can arrive during the collapse animation and
@@ -575,6 +590,43 @@ public partial class MainWindow : Window
             Hide();
             SetWindowSize(Settings.IslandWidth, Settings.IslandHeight);
             PositionWindow();
+            TrimMemory();
+        });
+    }
+
+    /// <summary>
+    /// Возвращает неиспользуемые страницы памяти системе. Вызывается только когда
+    /// островок полностью скрыт, не чаще раза в минуту и в фоне, чтобы не влиять
+    /// на анимацию.
+    /// </summary>
+    private void TrimMemory()
+    {
+        var now = DateTime.UtcNow;
+        var wait = MinTrimInterval - (now - _lastTrimAt);
+        if (wait > TimeSpan.Zero)
+        {
+            // Не отбрасываем запрос: иначе скрытие в пределах минуты после прошлой
+            // очистки оставляло рабочий набор раздутым до следующего сворачивания.
+            if (_trimTimer is not null) return;
+            _trimTimer = new DispatcherTimer { Interval = wait };
+            _trimTimer.Tick += (_, _) =>
+            {
+                _trimTimer?.Stop();
+                _trimTimer = null;
+                if (!IsVisible) TrimMemory();
+            };
+            _trimTimer.Start();
+            return;
+        }
+        _lastTrimAt = now;
+        Task.Run(() =>
+        {
+            try
+            {
+                GC.Collect(2, GCCollectionMode.Optimized, false, true);
+                NativeMethods.TrimWorkingSet();
+            }
+            catch { }
         });
     }
 
@@ -650,11 +702,13 @@ public partial class MainWindow : Window
     {
         if (_closing) return;
         if (!_panelMap.TryGetValue(tab, out var selected)) tab = "home";
+        var changed = _currentTab != tab;
         _currentTab = tab;
         HeaderContext.Text = "  /  " + (tab == "settings" ? "Настройки" : PanelCatalog.Title(tab));
         foreach (var panel in _panels) panel.Visibility = Visibility.Collapsed;
         selected = _panelMap[tab];
         selected.Visibility = Visibility.Visible;
+        if (changed) AnimatePanelIn(selected);
         if (tab != "ai" && SendButton.IsEnabled) AgentStatus.Text = "";
         if (tab == "media" && Media.IsPlaying) _mediaTimer.Start();
         else _mediaTimer.Stop();
@@ -664,7 +718,7 @@ public partial class MainWindow : Window
             SystemStatus.Text = string.IsNullOrWhiteSpace(_system.Status) ? "Системные интерфейсы готовы" : _system.Status;
             AiStatus.Text = string.IsNullOrWhiteSpace(Settings.AiKey) ? "Ключ не указан" : Settings.AiProvider;
         }
-        if (tab == "weather" && Weather.Temperature == "—°") _ = RefreshWeatherAsync(false);
+        if (tab == "weather" && Weather.TemperatureValue is null) _ = RefreshWeatherAsync(false);
         if (tab == "calendar")
         {
             _calendarMonth = new DateTime(_selectedDay.Year, _selectedDay.Month, 1);
@@ -675,8 +729,33 @@ public partial class MainWindow : Window
             RenderReminders();
             RemindersStatus.Text = $"{Reminders.Count(x => !x.Done)} активных";
         }
-        if (tab == "notes") Sync(Notes, Notes.OrderByDescending(x => x.Created));
         if (tab == "quickfiles") { QuickFilesStatus.Text = string.IsNullOrWhiteSpace(Settings.QuickFolder) ? "Папка не выбрана в настройках" : Settings.QuickFolder; _quickFiles.Refresh(); }
+        if (tab == "notifications") UpdateNotifications(_notifications.Items);
+    }
+
+    /// <summary>
+    /// Мягкое появление панели при переключении: прозрачность и короткий подъём.
+    /// Трансформация создаётся один раз на панель, чтобы не мусорить в куче при
+    /// каждом переходе.
+    /// </summary>
+    private void AnimatePanelIn(FrameworkElement panel)
+    {
+        if (!_panelTransforms.TryGetValue(panel, out var transform))
+        {
+            transform = new TranslateTransform();
+            panel.RenderTransform = transform;
+            _panelTransforms[panel] = transform;
+        }
+        panel.BeginAnimation(OpacityProperty, null);
+        transform.BeginAnimation(TranslateTransform.YProperty, null);
+        panel.Opacity = 1;
+        transform.Y = 0;
+        if (!SystemParameters.ClientAreaAnimation) return;
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var duration = TimeSpan.FromMilliseconds(TickMilliseconds);
+        panel.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop });
+        transform.BeginAnimation(TranslateTransform.YProperty,
+            new DoubleAnimation(10, 0, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop });
     }
 
     private void Nav_Click(object sender, RoutedEventArgs e) => SelectTab((string)((Button)sender).Tag);
@@ -753,10 +832,22 @@ public partial class MainWindow : Window
     {
         Sync(Notifications, items);
         NotificationStatus.Text = _notifications.Status;
-        NoNotificationsHome.Visibility = Notifications.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        var empty = Notifications.Count == 0;
+        NoNotificationsHome.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+        NoNotificationsPanel.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+        HomeNotificationsList.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+        NotificationsList.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+        ClearNotificationsPanelButton.IsEnabled = !empty;
     }
 
     private async void RefreshNotifications_Click(object sender, RoutedEventArgs e) => await _notifications.RefreshAsync(false);
+
+    private void ClearNotifications_Click(object sender, RoutedEventArgs e)
+    {
+        _notifications.ClearAll();
+        NotificationStatus.Text = "Список уведомлений очищен";
+    }
+
     private void DismissNotification_Click(object sender, RoutedEventArgs e)
     {
         if (((Button)sender).Tag is NotificationItem item) _notifications.Dismiss(item.Id);
@@ -817,10 +908,48 @@ public partial class MainWindow : Window
     {
         var text = NotesInput.Text.Trim();
         if (string.IsNullOrWhiteSpace(text)) return;
+        if (_editingNote is not null)
+        {
+            var index = Notes.IndexOf(_editingNote);
+            var updated = _editingNote with { Text = text };
+            if (index >= 0) Notes[index] = updated;
+            else Notes.Insert(0, updated);
+            _editingNote = null;
+            EndNoteEditing();
+            _notesService.Save(Notes);
+            NotesStatus.Text = "Изменено";
+            return;
+        }
         Notes.Insert(0, new NoteItem(Guid.NewGuid().ToString("N"), text, DateTime.Now));
         NotesInput.Clear();
         _notesService.Save(Notes);
         NotesStatus.Text = "Сохранено";
+    }
+
+    private void EditNote_Click(object sender, RoutedEventArgs e)
+    {
+        if (((Button)sender).Tag is not NoteItem note) return;
+        _editingNote = note;
+        NotesInput.Text = note.Text;
+        NotesInput.CaretIndex = note.Text.Length;
+        NotesInput.Focus();
+        NoteSaveButton.Content = "Сохранить изменения";
+        NoteCancelButton.Visibility = Visibility.Visible;
+        NotesStatus.Text = "Редактирование";
+    }
+
+    private void CancelNoteEdit_Click(object sender, RoutedEventArgs e)
+    {
+        _editingNote = null;
+        NotesInput.Clear();
+        EndNoteEditing();
+        NotesStatus.Text = "";
+    }
+
+    private void EndNoteEditing()
+    {
+        NoteSaveButton.Content = "Сохранить заметку";
+        NoteCancelButton.Visibility = Visibility.Collapsed;
     }
 
     private void CopyNote_Click(object sender, RoutedEventArgs e)
@@ -832,6 +961,12 @@ public partial class MainWindow : Window
     private void DeleteNote_Click(object sender, RoutedEventArgs e)
     {
         if (((Button)sender).Tag is not NoteItem note) return;
+        if (ReferenceEquals(note, _editingNote))
+        {
+            _editingNote = null;
+            NotesInput.Clear();
+            EndNoteEditing();
+        }
         Notes.Remove(note);
         _notesService.Save(Notes);
         NotesStatus.Text = "Удалено";
@@ -860,7 +995,13 @@ public partial class MainWindow : Window
         CalendarMonthText.Text = _calendarMonth.ToString("MMMM yyyy");
         var offset = ((int)_calendarMonth.DayOfWeek + 6) % 7;
         var start = _calendarMonth.AddDays(-offset);
-        var byDay = CalendarEvents.GroupBy(x => x.Start.Date).ToDictionary(g => g.Key, g => g.ToList());
+        var byDay = new Dictionary<DateTime, List<CalendarEventItem>>();
+        foreach (var item in CalendarEvents)
+        {
+            var day = item.Start.Date;
+            if (!byDay.TryGetValue(day, out var list)) byDay[day] = list = [];
+            list.Add(item);
+        }
         var accent = (Brush)Application.Current.Resources["AccentBrush"];
         var todayBrush = new SolidColorBrush(Color.FromArgb(60, 0x8B, 0x7C, 0xFF));
         todayBrush.Freeze();
@@ -999,9 +1140,26 @@ public partial class MainWindow : Window
     {
         Sync(Reminders, _allReminders.Where(x => !x.Done).OrderBy(x => x.Due));
         Sync(DoneReminders, _allReminders.Where(x => x.Done).OrderByDescending(x => x.CompletedAt ?? x.Due).Take(20));
-        NoRemindersText.Visibility = Reminders.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        DoneRemindersHeader.Visibility = DoneReminders.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var hasActive = Reminders.Count > 0;
+        NoRemindersText.Visibility = hasActive ? Visibility.Collapsed : Visibility.Visible;
+        RemindersList.Visibility = hasActive ? Visibility.Visible : Visibility.Collapsed;
+        DoneRemindersSection.Visibility = DoneReminders.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (DoneReminders.Count == 0)
+        {
+            DoneRemindersList.Visibility = Visibility.Collapsed;
+            DoneRemindersArrow.RenderTransform = new RotateTransform(0);
+            _doneRemindersOpen = false;
+        }
         RemindersStatus.Text = $"{Reminders.Count} активных";
+    }
+
+    private bool _doneRemindersOpen;
+
+    private void ToggleDoneReminders_Click(object sender, RoutedEventArgs e)
+    {
+        _doneRemindersOpen = !_doneRemindersOpen;
+        DoneRemindersList.Visibility = _doneRemindersOpen ? Visibility.Visible : Visibility.Collapsed;
+        DoneRemindersArrow.RenderTransform = new RotateTransform(_doneRemindersOpen ? 90 : 0);
     }
 
     private void AddReminder(ReminderItem reminder, bool createEvent = true)
@@ -1031,16 +1189,134 @@ public partial class MainWindow : Window
     {
         var title = ReminderTitleInput.Text.Trim();
         if (string.IsNullOrWhiteSpace(title)) { ReminderHint.Text = "Введите текст напоминания"; return; }
-        if (!TryParseDate(ReminderDateInput.Text, out var date)) date = DateTime.Today;
-        if (!TryParseTime(ReminderTimeInput.Text, out var time)) time = new TimeSpan(9, 0, 0);
-        var due = date.Add(time);
-        if (due <= DateTime.Now && date == DateTime.Today) due = DateTime.Now.AddMinutes(1);
+        var due = _reminderDate.Date.Add(_reminderTime);
+        if (due <= DateTime.Now)
+        {
+            due = DateTime.Now.AddMinutes(1);
+            _reminderDate = due.Date;
+            _reminderTime = due.TimeOfDay;
+            UpdateReminderPickers();
+        }
         var createEvent = ReminderCalendarCheck.IsChecked == true;
         AddReminder(new ReminderItem { Title = title, Due = due }, createEvent);
         ReminderTitleInput.Clear();
         ReminderHint.Text = createEvent
             ? $"Добавлено на {due:dd.MM HH:mm} · событие в календаре"
             : $"Добавлено на {due:dd.MM HH:mm} · только напоминание";
+    }
+
+    private void BuildTimeSlots()
+    {
+        _timeSlots.Clear();
+        for (var minutes = 0; minutes < 24 * 60; minutes += 30)
+            _timeSlots.Add(new TimeSlot(TimeSpan.FromMinutes(minutes)));
+        MarkTimeSlot(_reminderTime);
+        TimeSlotList.ItemsSource = _timeSlots;
+    }
+
+    private void MarkTimeSlot(TimeSpan time)
+    {
+        foreach (var slot in _timeSlots) slot.IsSelected = slot.Time == time;
+    }
+
+    private void UpdateReminderPickers()
+    {
+        ReminderDateText.Text = FormatReminderDate(_reminderDate);
+        ReminderTimeText.Text = $"{_reminderTime:hh\\:mm}";
+        MarkTimeSlot(_reminderTime);
+        if (_pickerMonth.Year != _reminderDate.Year || _pickerMonth.Month != _reminderDate.Month)
+            _pickerMonth = new DateTime(_reminderDate.Year, _reminderDate.Month, 1);
+        RenderPicker();
+    }
+
+    private static string FormatReminderDate(DateTime date) => date.Date switch
+    {
+        var d when d == DateTime.Today => "Сегодня",
+        var d when d == DateTime.Today.AddDays(1) => "Завтра",
+        var d when d == DateTime.Today.AddDays(-1) => "Вчера",
+        _ => date.ToString("dd.MM.yyyy")
+    };
+
+    private void RenderPicker()
+    {
+        PickerMonthText.Text = _pickerMonth.ToString("MMMM yyyy");
+        var offset = ((int)_pickerMonth.DayOfWeek + 6) % 7;
+        var start = _pickerMonth.AddDays(-offset);
+        var accent = (Brush)Application.Current.Resources["AccentBrush"];
+        var todayBrush = new SolidColorBrush(Color.FromArgb(48, 0xFF, 0xFF, 0xFF));
+        todayBrush.Freeze();
+        _pickerDays.Clear();
+        for (var i = 0; i < 42; i++)
+        {
+            var date = start.AddDays(i);
+            _pickerDays.Add(new CalendarDayItem
+            {
+                Date = date,
+                HasItems = false,
+                Opacity = date.Month == _pickerMonth.Month ? 1 : 0.3,
+                Background = date == _reminderDate.Date ? accent : date == DateTime.Today ? todayBrush : Brushes.Transparent,
+                Foreground = date == _reminderDate.Date ? Brushes.White : Brushes.White,
+                ToolTip = date.ToString("dd MMMM yyyy")
+            });
+        }
+        PickerGrid.ItemsSource = _pickerDays;
+    }
+
+    private void ReminderDateButton_Click(object sender, RoutedEventArgs e)
+    {
+        _pickerMonth = new DateTime(_reminderDate.Year, _reminderDate.Month, 1);
+        RenderPicker();
+        ReminderTimePopup.IsOpen = false;
+        ReminderDatePopup.IsOpen = true;
+    }
+
+    private void ReminderTimeButton_Click(object sender, RoutedEventArgs e)
+    {
+        MarkTimeSlot(_reminderTime);
+        ReminderDatePopup.IsOpen = false;
+        ReminderTimePopup.IsOpen = true;
+    }
+
+    private void PickerPrev_Click(object sender, RoutedEventArgs e)
+    {
+        _pickerMonth = _pickerMonth.AddMonths(-1);
+        RenderPicker();
+    }
+
+    private void PickerNext_Click(object sender, RoutedEventArgs e)
+    {
+        _pickerMonth = _pickerMonth.AddMonths(1);
+        RenderPicker();
+    }
+
+    private void PickerDay_Click(object sender, RoutedEventArgs e)
+    {
+        if (((Button)sender).Tag is not DateTime date) return;
+        _reminderDate = date.Date;
+        UpdateReminderPickers();
+        ReminderDatePopup.IsOpen = false;
+    }
+
+    private void PickerToday_Click(object sender, RoutedEventArgs e)
+    {
+        _reminderDate = DateTime.Today;
+        UpdateReminderPickers();
+        ReminderDatePopup.IsOpen = false;
+    }
+
+    private void PickerTomorrow_Click(object sender, RoutedEventArgs e)
+    {
+        _reminderDate = DateTime.Today.AddDays(1);
+        UpdateReminderPickers();
+        ReminderDatePopup.IsOpen = false;
+    }
+
+    private void PickerTime_Click(object sender, RoutedEventArgs e)
+    {
+        if (((Button)sender).Tag is not TimeSlot slot) return;
+        _reminderTime = slot.Time;
+        UpdateReminderPickers();
+        ReminderTimePopup.IsOpen = false;
     }
 
     private void CheckReminders()
@@ -1302,6 +1578,9 @@ public partial class MainWindow : Window
             var history = Chat.Take(Chat.Count - 1).ToArray();
             var answer = await _ai.SendAsync(Settings.AiBaseUrl, Settings.AiKey, Settings.AiModel, agent, history, prompt, _chatCts.Token);
             Chat.Add(new ChatMessage { Role = "assistant", Content = answer });
+            // Диалог живёт только в памяти: держим последние 200 сообщений,
+            // чтобы длинная переписка не росла бесконечно.
+            while (Chat.Count > 200) Chat.RemoveAt(0);
             AgentStatus.Text = $"{agent.Name} · {Settings.AiModel}";
         }
         catch (OperationCanceledException) { AgentStatus.Text = "Запрос отменён"; }
@@ -1384,16 +1663,21 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(Settings.WeatherCity)) return;
         _weatherCts?.Cancel();
         _weatherCts = new CancellationTokenSource();
+        var token = _weatherCts.Token;
         Weather.Updated = "Обновление…";
         try
         {
-            var info = await _weather.GetCurrentAsync(Settings.WeatherKey, Settings.WeatherCity, Settings.WeatherLanguage, _weatherCts.Token);
+            var info = await _weather.GetCurrentAsync(Settings.WeatherKey, Settings.WeatherCity, Settings.WeatherLanguage, token);
+            if (token.IsCancellationRequested) return;
+            var previous = Weather.Temperature;
             Weather.City = info.City;
-            Weather.Temperature = info.Temperature;
+            Weather.TemperatureValue = info.Temperature;
             Weather.Condition = info.Condition;
             Weather.Details = info.Details;
             Weather.Icon = info.Icon;
-            Weather.Updated = info.Updated;
+            Weather.FetchedAt = DateTime.Now;
+            Weather.Updated = "Обновлено " + DateTime.Now.ToString("HH:mm");
+            Diagnostics.Log($"Weather: {previous} → {Weather.Temperature} ({info.City})");
             UpdateWeatherPill();
             SaveSettings();
         }
@@ -1530,9 +1814,27 @@ public partial class MainWindow : Window
         _tray = null;
     }
 
+    /// <summary>
+    /// Копирует последовательность в коллекцию, не пересобирая элементы интерфейса,
+    /// если состав и порядок не изменились. Без этой проверки каждый опрос
+    /// уведомлений пересоздавал все карточки в списках.
+    /// </summary>
     private static void Sync<T>(ObservableCollection<T> target, IEnumerable<T> source)
     {
+        var items = source as IReadOnlyList<T> ?? source.ToList();
+        if (ReferenceEquals(items, target)) return;
+        if (target.Count == items.Count)
+        {
+            var same = true;
+            for (var i = 0; i < items.Count; i++)
+            {
+                if (EqualityComparer<T>.Default.Equals(target[i], items[i])) continue;
+                same = false;
+                break;
+            }
+            if (same) return;
+        }
         target.Clear();
-        foreach (var item in source) target.Add(item);
+        foreach (var item in items) target.Add(item);
     }
 }

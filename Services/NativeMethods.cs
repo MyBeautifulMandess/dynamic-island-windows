@@ -128,6 +128,17 @@ internal static class NativeMethods
     [DllImport("user32.dll")] internal static extern uint GetDpiForWindow(IntPtr window);
     [DllImport("user32.dll")] internal static extern IntPtr GetShellWindow();
     [DllImport("shcore.dll")] internal static extern int GetDpiForMonitor(IntPtr monitor, uint dpiType, out uint dpiX, out uint dpiY);
+    [DllImport("psapi.dll")] internal static extern bool EmptyWorkingSet(IntPtr process);
+    [DllImport("kernel32.dll")] internal static extern IntPtr GetCurrentProcess();
+
+    /// <summary>
+    /// Просит Windows выгрузить страницы рабочего набора процесса, которые давно
+    /// не использовались. Вызывается только когда пилюля скрыта.
+    /// </summary>
+    internal static void TrimWorkingSet()
+    {
+        try { EmptyWorkingSet(GetCurrentProcess()); } catch { }
+    }
 
     internal static MonitorInfo GetMonitor(Point point)
     {

@@ -7,7 +7,7 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>DynamicIsland</AssemblyName>
     <RootNamespace>DynamicIsland</RootNamespace>
-    <Version>1.1.3</Version>
+    <Version>1.2.0</Version>
     <Product>Dynamic Island for Windows</Product>
     <Description>Dynamic Island-style control center for Windows</Description>
     <Authors>MyBeautifulMandess</Authors>
@@ -17,7 +17,20 @@
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <DebugType>embedded</DebugType>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <TieredCompilation>true</TieredCompilation>
+    <TieredPGO>true</TieredPGO>
+    <SatelliteResourceLanguages>ru</SatelliteResourceLanguages>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Сборщик мусора агрессивнее возвращает освободившиеся сегменты и реже
+         растягивает кучу: для фонового приложения важнее память, чем пиковая
+         пропускная способность аллокаций. -->
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
+    <RuntimeHostConfigurationOption Include="System.GC.RetainVM" Value="false" />
+    <RuntimeHostConfigurationOption Include="System.GC.Gen0Size" Value="16777216" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>

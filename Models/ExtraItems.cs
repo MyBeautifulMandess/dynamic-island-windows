@@ -95,3 +95,22 @@ public sealed class QuickFileItem : ObservableObject
     public required string Extension { get; init; }
     public ImageSource? Icon { get; init; }
 }
+
+public sealed class TimeSlot : ObservableObject
+{
+    private bool _isSelected;
+
+    public TimeSlot(TimeSpan time) => Time = time;
+
+    public TimeSpan Time { get; }
+    public string Text => $"{Time:hh\\:mm}";
+    public bool IsSelected { get => _isSelected; set { if (Set(ref _isSelected, value)) { Notify(nameof(Background)); Notify(nameof(Foreground)); } } }
+    public Brush Background => IsSelected ? AccentBrushValue : Brushes.Transparent;
+    public Brush Foreground => IsSelected ? Brushes.White : TextBrushValue;
+
+    private static Brush AccentBrushValue =>
+        System.Windows.Application.Current?.Resources["AccentBrush"] as Brush ?? Brushes.Transparent;
+
+    private static Brush TextBrushValue =>
+        System.Windows.Application.Current?.Resources["TextBrush"] as Brush ?? Brushes.White;
+}
