@@ -1,5 +1,5 @@
-#define MyAppName "Dynamic Island"
-#define MyAppVersion "1.2.0"
+﻿#define MyAppName "Dynamic Island"
+#define MyAppVersion "1.4.0"
 #define MyAppPublisher "MyBeautifulMandess"
 #define MyAppUrl "https://github.com/MyBeautifulMandess/dynamic-island-windows"
 #define MyAppExeName "DynamicIsland.exe"
