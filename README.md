@@ -180,10 +180,10 @@ Dynamic Island в стиле macOS для Windows: управление сист
 | | |
 |---|---|
 | Репозиторий | [MyBeautifulMandess/dilink-android](https://github.com/MyBeautifulMandess/dilink-android) |
-| Скачать APK | [DILink-1.0.0.apk](https://github.com/MyBeautifulMandess/dilink-android/releases/latest/download/DILink-1.0.0.apk) |
+| Скачать APK | [DILink-1.1.0.apk](https://github.com/MyBeautifulMandess/dilink-android/releases/latest/download/DILink-1.1.0.apk) |
 | Требования | Android 7.0 и новее |
 
-Приложение сканирует QR-код с экрана островка, слушает уведомления через `NotificationListenerService`, работает с буфером обмена и `MediaSession`, а также открывается из меню «Поделиться» для отправки файлов. Подробности установки и сборки — в [README репозитория](https://github.com/MyBeautifulMandess/dilink-android#readme).
+Приложение сканирует QR-код с экрана островка, слушает уведомления через `NotificationListenerService`, работает с буфером обмена и `MediaSession`, а также открывается из меню «Поделиться» для отправки файлов. Календарь и напоминания на телефоне — отдельные вкладки, а напоминания приходят уведомлением на сам телефон через `AlarmManager`. Подробности установки и сборки — в [README репозитория](https://github.com/MyBeautifulMandess/dilink-android#readme).
 
 ### Как подключить
 
