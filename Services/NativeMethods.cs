@@ -102,6 +102,7 @@ internal static class NativeMethods
     }
 
     [DllImport("user32.dll")] internal static extern bool GetCursorPos(out Point point);
+    [DllImport("user32.dll")] internal static extern short GetAsyncKeyState(int key);
     [DllImport("user32.dll")] internal static extern IntPtr MonitorFromPoint(Point point, uint flags);
     [DllImport("user32.dll")] internal static extern bool GetWindowRect(IntPtr window, out Rect rect);
     [DllImport("user32.dll", SetLastError = true)] internal static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
@@ -203,6 +204,12 @@ internal static class NativeMethods
         if (window == IntPtr.Zero) return;
         SetWindowPos(window, new IntPtr(-1), 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
     }
+
+    /// <summary>
+    /// Зажата ли левая кнопка мыши. Пока её держат, идёт перетаскивание: островок
+    /// в этот момент нельзя сворачивать, иначе файл некуда будет отпустить.
+    /// </summary>
+    internal static bool IsLeftButtonDown() => (GetAsyncKeyState(0x01) & 0x8000) != 0;
 
     internal static void SendPaste()
     {

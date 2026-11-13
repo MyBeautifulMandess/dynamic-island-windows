@@ -84,6 +84,8 @@ public partial class MainWindow : Window
     public Models.MediaState Media { get; } = new();
     public WeatherInfo Weather { get; } = new();
     public ObservableCollection<NotificationItem> Notifications { get; } = [];
+    public ObservableCollection<NotificationItem> SystemNotifications { get; } = [];
+    public ObservableCollection<NotificationItem> PhoneNotifications { get; } = [];
     public ObservableCollection<ClipboardItem> ClipboardItems { get; } = [];
     public ObservableCollection<DownloadItem> Downloads { get; } = [];
     public ObservableCollection<ChatMessage> Chat { get; } = [];
@@ -219,7 +221,8 @@ public partial class MainWindow : Window
             _tray = new TrayIconService(
                 () => Dispatcher.Invoke(() => Expand("home")),
                 () => Dispatcher.Invoke(() => Expand("settings")),
-                () => Dispatcher.Invoke(ExitApp));
+                () => Dispatcher.Invoke(ExitApp),
+                () => Dispatcher.Invoke(() => SendFileToPhone_Click(this, new RoutedEventArgs())));
         }
         catch (Exception ex)
         {
@@ -376,6 +379,13 @@ public partial class MainWindow : Window
     {
         if (_closing || !NativeMethods.GetCursorPos(out var point)) return;
         if (_toastVisible) return;
+        // Пока зажата левая кнопка, идёт перетаскивание. Островок в этот момент
+        // сворачивать нельзя: окно уходит из-под курсора, и файл некуда отпустить.
+        if (NativeMethods.IsLeftButtonDown())
+        {
+            _collapseTimer.Stop();
+            return;
+        }
         if (_expanded)
         {
             if (_activeReminder is not null) return;
@@ -898,13 +908,23 @@ public partial class MainWindow : Window
     private void UpdateNotifications(IReadOnlyList<NotificationItem> items)
     {
         Sync(Notifications, items);
+        // Два столбца: системные уведомления и уведомления, присланные с телефона.
+        Sync(SystemNotifications, items.Where(item => !item.FromPhone));
+        Sync(PhoneNotifications, items.Where(item => item.FromPhone));
         NotificationStatus.Text = _notificationCenter.Status;
         var empty = Notifications.Count == 0;
         NoNotificationsHome.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
-        NoNotificationsPanel.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         HomeNotificationsList.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
-        NotificationsList.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
         ClearNotificationsPanelButton.IsEnabled = !empty;
+
+        var systemEmpty = SystemNotifications.Count == 0;
+        var phoneEmpty = PhoneNotifications.Count == 0;
+        SystemNotificationsList.Visibility = systemEmpty ? Visibility.Collapsed : Visibility.Visible;
+        NoSystemNotifications.Visibility = systemEmpty ? Visibility.Visible : Visibility.Collapsed;
+        PhoneNotificationsList.Visibility = phoneEmpty ? Visibility.Collapsed : Visibility.Visible;
+        NoPhoneNotifications.Visibility = phoneEmpty ? Visibility.Visible : Visibility.Collapsed;
+        SystemNotificationsCount.Text = SystemNotifications.Count.ToString();
+        PhoneNotificationsCount.Text = PhoneNotifications.Count.ToString();
     }
 
     private async void RefreshNotifications_Click(object sender, RoutedEventArgs e) => await _notificationCenter.RefreshAsync();
@@ -1131,12 +1151,13 @@ public partial class MainWindow : Window
 
     private void SendFileToPhone_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog { Title = "Отправить файл на телефон", CheckFileExists = true };
+        var dialog = new OpenFileDialog { Title = "Отправить файл на телефон", CheckFileExists = true, Multiselect = true };
         if (dialog.ShowDialog(this) != true) return;
-        SendFileToPhone(dialog.FileName);
+        SendFilesToPhone(dialog.FileNames);
     }
 
-    private async void SendFileToPhone(string path)
+    /// <summary>Отправка одного или нескольких файлов на подключённый телефон.</summary>
+    private async void SendFilesToPhone(IEnumerable<string> paths)
     {
         var device = _phone.Link.ConnectedDevices.FirstOrDefault();
         if (device is null)
@@ -1144,9 +1165,21 @@ public partial class MainWindow : Window
             ShowPhoneStatus("Телефон не подключён");
             return;
         }
-        await _phone.Files.SendAsync(device, path);
-        ShowPhoneStatus("Отправка: " + Path.GetFileName(path));
+        var list = paths.Where(File.Exists).ToList();
+        if (list.Count == 0)
+        {
+            ShowPhoneStatus("Файл не найден");
+            return;
+        }
+        foreach (var path in list)
+        {
+            await _phone.Files.SendAsync(device, path);
+            ShowPhoneStatus("Отправка: " + Path.GetFileName(path));
+        }
+        if (list.Count > 1) ShowPhoneStatus("В очередь на отправку: " + list.Count + " файлов");
     }
+
+    private void SendFileToPhone(string path) => SendFilesToPhone(new[] { path });
 
     private void UpdateFileTransfer(FileTransferProgress progress)
     {
@@ -1281,22 +1314,57 @@ public partial class MainWindow : Window
     /// <summary>Перетаскивание файла на островок отправляет его на телефон.</summary>
     private void Window_DragOver(object sender, DragEventArgs e)
     {
-        var hasFile = Settings.Phone.Enabled && _phone.Link.HasConnections &&
-                      e.Data.GetDataPresent(DataFormats.FileDrop) &&
-                      e.Data.GetData(DataFormats.FileDrop) is string[] { Length: 1 } files &&
-                      File.Exists(files[0]);
-        e.Effects = hasFile ? DragDropEffects.Copy : DragDropEffects.None;
+        var files = DroppedFiles(e.Data);
+        if (files.Count == 0)
+        {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+            SetDropHint(null);
+            return;
+        }
+        var connected = Settings.Phone.Enabled && _phone.Link.HasConnections;
+        e.Effects = connected ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
+        SetDropHint(connected
+            ? files.Count == 1
+                ? "Отпустите — отправится на телефон"
+                : $"Отпустите — {files.Count} файлов на телефон"
+            : "Телефон не подключён");
+    }
+
+    private void Window_DragLeave(object sender, DragEventArgs e)
+    {
+        SetDropHint(null);
     }
 
     private void Window_Drop(object sender, DragEventArgs e)
     {
         e.Handled = true;
+        SetDropHint(null);
         if (!Settings.Phone.Enabled) return;
-        if (e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: 1 } files) return;
-        var path = files[0];
-        if (!File.Exists(path)) return;
-        SendFileToPhone(path);
+        var files = DroppedFiles(e.Data);
+        if (files.Count == 0) return;
+        SendFilesToPhone(files);
+    }
+
+    /// <summary>Файлы из перетаскивания — только существующие на диске.</summary>
+    private static List<string> DroppedFiles(IDataObject data)
+    {
+        if (!data.GetDataPresent(DataFormats.FileDrop)) return new List<string>();
+        if (data.GetData(DataFormats.FileDrop) is not string[] dropped) return new List<string>();
+        return dropped.Where(File.Exists).ToList();
+    }
+
+    /// <summary>Подсказка на островке во время перетаскивания файла.</summary>
+    private void SetDropHint(string? text)
+    {
+        if (text is null)
+        {
+            if (DropHint.Visibility != Visibility.Collapsed) DropHint.Visibility = Visibility.Collapsed;
+            return;
+        }
+        DropHintText.Text = text;
+        DropHint.Visibility = Visibility.Visible;
     }
 
 

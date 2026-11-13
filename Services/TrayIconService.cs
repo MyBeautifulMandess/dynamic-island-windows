@@ -19,17 +19,19 @@ internal sealed class TrayIconService : IDisposable
     private readonly Action _onOpen;
     private readonly Action _onSettings;
     private readonly Action _onExit;
+    private readonly Action? _onSendFile;
     private readonly uint _taskbarCreated;
     private NativeMethods.NotifyIconData _data;
     private IntPtr _icon;
     private ContextMenu? _menu;
     private bool _disposed;
 
-    public TrayIconService(Action onOpen, Action onSettings, Action onExit)
+    public TrayIconService(Action onOpen, Action onSettings, Action onExit, Action? onSendFile = null)
     {
         _onOpen = onOpen;
         _onSettings = onSettings;
         _onExit = onExit;
+        _onSendFile = onSendFile;
         _taskbarCreated = NativeMethods.RegisterWindowMessage("TaskbarCreated");
         _source = new HwndSource(new HwndSourceParameters("DynamicIslandTray")
         {
@@ -121,6 +123,8 @@ internal sealed class TrayIconService : IDisposable
                     Item("Выход", _onExit)
                 }
             };
+            if (_onSendFile is not null)
+                _menu.Items.Insert(3, Item("Отправить файл на телефон…", _onSendFile));
         }
         _menu.Placement = PlacementMode.MousePoint;
         _menu.IsOpen = true;

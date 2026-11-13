@@ -5,7 +5,7 @@
         WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" WindowStartupLocation="Manual" ShowActivated="False"
         Closing="Window_Closing" Loaded="Window_Loaded" Activated="Window_Activated"
-        AllowDrop="True" DragOver="Window_DragOver" Drop="Window_Drop"
+        AllowDrop="True" DragOver="Window_DragOver" DragLeave="Window_DragLeave" Drop="Window_Drop"
         UseLayoutRounding="True" TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType">
     <Window.Resources>
         <DataTemplate x:Key="NotificationTemplate">
@@ -180,6 +180,15 @@
                         <TextBlock x:Name="ClockText" Text="00:00" FontSize="12" FontWeight="SemiBold" />
                     </StackPanel>
                 </Grid>
+
+                <!-- Подсказка приёма файла: появляется, когда файл тянут на островок -->
+                <Border x:Name="DropHint" Visibility="Collapsed" Background="#F2181820" CornerRadius="0,0,21,21">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock FontFamily="{StaticResource IconFont}" FontSize="16" Text="&#xE8B7;"
+                                   Foreground="{DynamicResource AccentBrush}" Margin="0,0,8,0" VerticalAlignment="Center" />
+                        <TextBlock x:Name="DropHintText" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
 
                 <!-- Раскрытая панель -->
                 <Grid x:Name="ExpandedPanel" Visibility="Collapsed">
@@ -437,8 +446,43 @@
                                 </Grid>
                                 <TextBlock x:Name="NotificationStatus" Grid.Row="1" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,10" FontSize="11.5" />
                                 <Grid Grid.Row="2">
-                                    <ListBox x:Name="NotificationsList" ItemsSource="{Binding Notifications}" Style="{StaticResource VirtualList}" ItemTemplate="{StaticResource NotificationTemplate}" />
-                                    <TextBlock x:Name="NoNotificationsPanel" Text="Уведомлений нет" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,18" FontSize="12" />
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="14" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Уведомления Windows -->
+                                    <Grid Grid.Column="0">
+                                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,7">
+                                            <Border Width="7" Height="7" CornerRadius="4" Background="{DynamicResource AccentBrush}" Margin="0,0,7,0" VerticalAlignment="Center" />
+                                            <TextBlock Text="Система" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <TextBlock x:Name="SystemNotificationsCount" Foreground="{StaticResource MutedBrush}" FontSize="11.5" Margin="6,0,0,0" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <Grid Grid.Row="1">
+                                            <ListBox x:Name="SystemNotificationsList" ItemsSource="{Binding SystemNotifications}"
+                                                     Style="{StaticResource VirtualList}" ItemTemplate="{StaticResource NotificationTemplate}" />
+                                            <TextBlock x:Name="NoSystemNotifications" Text="Системных уведомлений нет" Foreground="{StaticResource MutedBrush}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,18" FontSize="12" TextWrapping="Wrap" TextAlignment="Center" />
+                                        </Grid>
+                                    </Grid>
+
+                                    <!-- Уведомления с телефона -->
+                                    <Grid Grid.Column="2">
+                                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,7">
+                                            <Border Width="7" Height="7" CornerRadius="4" Background="#4CD07D" Margin="0,0,7,0" VerticalAlignment="Center" />
+                                            <TextBlock Text="Телефон" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <TextBlock x:Name="PhoneNotificationsCount" Foreground="{StaticResource MutedBrush}" FontSize="11.5" Margin="6,0,0,0" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <Grid Grid.Row="1">
+                                            <ListBox x:Name="PhoneNotificationsList" ItemsSource="{Binding PhoneNotifications}"
+                                                     Style="{StaticResource VirtualList}" ItemTemplate="{StaticResource NotificationTemplate}" />
+                                            <TextBlock x:Name="NoPhoneNotifications" Text="Уведомлений с телефона нет" Foreground="{StaticResource MutedBrush}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,18" FontSize="12" TextWrapping="Wrap" TextAlignment="Center" />
+                                        </Grid>
+                                    </Grid>
                                 </Grid>
                             </Grid>
 
