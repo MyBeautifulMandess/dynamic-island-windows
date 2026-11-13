@@ -13,6 +13,7 @@ public static class PanelCatalog
         ("notifications", "Уведомления", "\uE7E7"),
         ("ai", "AI-агенты", "\uE99A"),
         ("clipboard", "Буфер", "\uE8C8"),
+        ("phone", "Телефон", "\uE8EA"),
         ("files", "Загрузки", "\uE896"),
         ("weather", "Погода", "\uE706")
     ];

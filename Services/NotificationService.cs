@@ -4,11 +4,11 @@ using Windows.UI.Notifications.Management;
 
 namespace DynamicIsland.Services;
 
-public sealed class NotificationService : IDisposable
+public sealed class NotificationService : INotificationSink, IDisposable
 {
     private UserNotificationListener? _listener;
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
-    private readonly Dictionary<uint, NotificationItem> _items = new();
+    private readonly Dictionary<string, NotificationItem> _items = new();
     private CancellationTokenSource? _pollCts;
     private bool _initialized;
     private bool _disposed;
@@ -85,18 +85,18 @@ public sealed class NotificationService : IDisposable
         {
             var notifications = await _listener.GetNotificationsAsync(NotificationKinds.Toast);
             var fresh = new List<NotificationItem>();
-            var activeIds = new HashSet<uint>();
+            var activeIds = new HashSet<string>();
             foreach (var notification in notifications)
             {
-                activeIds.Add(notification.Id);
-                if (_items.TryGetValue(notification.Id, out var known))
+                activeIds.Add(notification.Id.ToString());
+                if (_items.TryGetValue(notification.Id.ToString(), out var known))
                 {
                     fresh.Add(known);
                     continue;
                 }
 
                 var item = Map(notification);
-                _items[notification.Id] = item;
+                _items[notification.Id.ToString()] = item;
                 fresh.Add(item);
                 if (announce && _initialized) Received?.Invoke(item);
             }
@@ -133,15 +133,18 @@ public sealed class NotificationService : IDisposable
         catch { }
         var title = lines.FirstOrDefault() ?? appName;
         var body = string.Join("\n", lines.Skip(1));
-        return new NotificationItem(notification.Id, appName, title, body, notification.CreationTime.LocalDateTime);
+        return new NotificationItem(notification.Id.ToString(), appName, title, body, notification.CreationTime.LocalDateTime);
     }
 
     public IReadOnlyList<NotificationItem> Items =>
         _items.Values.OrderByDescending(x => x.Created).Take(50).ToArray();
 
-    public void Dismiss(uint id)
+    public void Dismiss(string id)
     {
-        try { _listener?.RemoveNotification(id); } catch { }
+        if (uint.TryParse(id, out var numeric))
+        {
+            try { _listener?.RemoveNotification(numeric); } catch { }
+        }
         if (_items.Remove(id)) NotifyChanged();
     }
 
@@ -152,7 +155,10 @@ public sealed class NotificationService : IDisposable
     {
         foreach (var id in _items.Keys.ToArray())
         {
-            try { _listener?.RemoveNotification(id); } catch { }
+            if (uint.TryParse(id, out var numeric))
+            {
+                try { _listener?.RemoveNotification(numeric); } catch { }
+            }
         }
         var changed = _items.Count > 0;
         _items.Clear();

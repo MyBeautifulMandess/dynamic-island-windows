@@ -2,14 +2,29 @@ using System.Windows.Media;
 
 namespace DynamicIsland.Models;
 
-public sealed record NotificationItem(uint Id, string AppName, string Title, string Body, DateTime Created)
+public sealed record NotificationItem(string Id, string AppName, string Title, string Body, DateTime Created)
 {
+    /// <summary>"pc" для уведомлений Windows, "phone" — для присланных с телефона.</summary>
+    public string Source { get; init; } = "pc";
+
+    /// <summary>Имя сопряжённого телефона. Пусто для локальных уведомлений.</summary>
+    public string DeviceName { get; init; } = "";
+
+    /// <summary>Ключ уведомления на телефоне: нужен, чтобы попросить Android убрать его из шторки.</summary>
+    public string RemoteKey { get; init; } = "";
+
+    public bool FromPhone => Source == "phone";
     public string Time => Created.ToString("HH:mm");
     public string Initial => string.IsNullOrWhiteSpace(AppName) ? "•" : AppName[..1].ToUpperInvariant();
+    public string SourceLabel => FromPhone ? "Телефон" : AppName;
 }
 
 public sealed record ClipboardItem(string Text, DateTime Created)
 {
+    /// <summary>"pc" или "phone". Старые записи без поля читаются как локальные.</summary>
+    public string Origin { get; init; } = "pc";
+
+    public bool FromPhone => Origin == "phone";
     public string Preview => Text.Replace("\r", " ").Replace("\n", " ").Trim();
     public string Time => Created.ToString("HH:mm");
 }

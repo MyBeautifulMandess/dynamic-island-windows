@@ -22,7 +22,10 @@ public partial class MainWindow : Window
 {
     private readonly SettingsService _settingsService = new();
     private readonly NotificationService _notifications = new();
+    private readonly PhoneNotificationService _phoneNotifications;
+    private readonly NotificationCenter _notificationCenter;
     private readonly MediaService _media = new();
+    private readonly PhoneLinkCoordinator _phone;
     private readonly SystemControlService _system = new();
     private readonly ClipboardService _clipboard = new();
     private readonly DownloadsService _downloads = new();
@@ -100,6 +103,9 @@ public partial class MainWindow : Window
         InitializeComponent();
         Settings = _settingsService.Load();
         _quickFiles = new QuickFilesService(() => Settings.QuickFolder);
+        _phone = new PhoneLinkCoordinator(_clipboard, _downloads.DownloadsPath) { SettingsProvider = () => Settings.Phone };
+        _phoneNotifications = _phone.Notifications;
+        _notificationCenter = new NotificationCenter(_notifications, _phoneNotifications);
         DataContext = this;
         foreach (var agent in AgentPreset.Defaults) Agents.Add(agent);
         AgentCombo.SelectedIndex = 0;
@@ -115,6 +121,7 @@ public partial class MainWindow : Window
         _panelMap.Add("notifications", NotificationsPanel);
         _panelMap.Add("ai", AiPanel);
         _panelMap.Add("clipboard", ClipboardPanel);
+        _panelMap.Add("phone", PhonePanel);
         _panelMap.Add("files", FilesPanel);
         _panelMap.Add("weather", WeatherPanel);
         _panelMap.Add("settings", SettingsPanel);
@@ -129,13 +136,19 @@ public partial class MainWindow : Window
         RenderPicker();
         UpdateReminderPickers();
 
-        _notifications.Changed += items => Dispatcher.Invoke(() => UpdateNotifications(items));
-        _notifications.Received += item => Dispatcher.Invoke(() => ShowToast(item));
+        _notificationCenter.Changed += items => Dispatcher.Invoke(() => UpdateNotifications(items));
+        _notificationCenter.Received += item => Dispatcher.Invoke(() => ShowToast(item));
         _media.Changed += snapshot => Dispatcher.Invoke(() => ApplyMedia(snapshot));
+        _phone.Media.Changed += snapshot => Dispatcher.Invoke(() =>
+        {
+            // Телефон в приоритете; когда он отдал hasMedia:false, снова показываем локальный источник.
+            if (snapshot.HasMedia) ApplyPhoneMedia(snapshot);
+            else ApplyMediaCore(snapshot);
+        });
         _media.TrackChanged += snapshot => Dispatcher.Invoke(() =>
         {
-            if (Settings.ShowMediaPopup)
-                ShowToast(new NotificationItem(0, snapshot.Source, snapshot.Title, snapshot.Artist, DateTime.Now));
+            if (Settings.ShowMediaPopup && _phone.Media.Current is null)
+                ShowToast(new NotificationItem("", snapshot.Source, snapshot.Title, snapshot.Artist, DateTime.Now));
         });
         _clipboard.Changed += _ => Dispatcher.Invoke(SyncClipboard);
         _downloads.Changed += items => Dispatcher.Invoke(() => Sync(Downloads, items));
@@ -146,6 +159,26 @@ public partial class MainWindow : Window
         });
         _system.RadioChanged += () => Dispatcher.Invoke(UpdateRadioStates);
         Settings.PropertyChanged += Settings_PropertyChanged;
+        Settings.Phone.PropertyChanged += Phone_PropertyChanged;
+
+        // Записи, созданные до появления связи с телефоном, попадают в зеркало
+        // один раз и уходят телефону вместе с первым снимком.
+        _phone.Planner.Seed(CalendarEvents, _allReminders);
+        _phone.Attach();
+        _phone.Planner.Applied += record => Dispatcher.BeginInvoke(() =>
+        {
+            ApplyPlannerRecord(record);
+            RefreshPhonePanel();
+        });
+        _phone.Planner.Merged += () => Dispatcher.BeginInvoke(RefreshPhonePanel);
+        _phone.ClipboardFromPhone += _ => Dispatcher.BeginInvoke(OnClipboardFromPhone);
+        _phone.StateChanged += () => Dispatcher.BeginInvoke(() =>
+        {
+            UpdatePhonePill();
+            RefreshPhonePanel();
+        });
+        _phone.Planner.UpdatePending();
+        UpdatePhonePill();
 
         _cursorTimer.Tick += Cursor_Tick;
         _collapseTimer.Tick += (_, _) => { _collapseTimer.Stop(); if (!IsCursorInsideIsland()) Collapse(); };
@@ -206,11 +239,11 @@ public partial class MainWindow : Window
 
         await SafeAsync("media", _media.InitializeAsync);
         await SafeAsync("system", _system.InitializeAsync);
-        await SafeAsync("notifications", _notifications.InitializeAsync);
+        await SafeAsync("notifications", _notificationCenter.InitializeAsync);
 
         Dispatcher.Invoke(() =>
         {
-            NotificationStatus.Text = _notifications.Status;
+            NotificationStatus.Text = _notificationCenter.Status;
             SystemStatus.Text = string.IsNullOrWhiteSpace(_system.Status) ? "Системные интерфейсы готовы" : _system.Status;
             UpdateRadioStates();
         });
@@ -714,7 +747,7 @@ public partial class MainWindow : Window
         else _mediaTimer.Stop();
         if (tab == "settings")
         {
-            NotificationStatus.Text = _notifications.Status;
+            NotificationStatus.Text = _notificationCenter.Status;
             SystemStatus.Text = string.IsNullOrWhiteSpace(_system.Status) ? "Системные интерфейсы готовы" : _system.Status;
             AiStatus.Text = string.IsNullOrWhiteSpace(Settings.AiKey) ? "Ключ не указан" : Settings.AiProvider;
         }
@@ -730,7 +763,8 @@ public partial class MainWindow : Window
             RemindersStatus.Text = $"{Reminders.Count(x => !x.Done)} активных";
         }
         if (tab == "quickfiles") { QuickFilesStatus.Text = string.IsNullOrWhiteSpace(Settings.QuickFolder) ? "Папка не выбрана в настройках" : Settings.QuickFolder; _quickFiles.Refresh(); }
-        if (tab == "notifications") UpdateNotifications(_notifications.Items);
+        if (tab == "notifications") UpdateNotifications(_notificationCenter.Items);
+        if (tab == "phone") RefreshPhonePanel();
     }
 
     /// <summary>
@@ -785,7 +819,21 @@ public partial class MainWindow : Window
         BatteryText.Text = battery.Available ? $"{(battery.Charging ? "ϟ " : "")}{battery.Percent}%" : "";
     }
 
-    private void ApplyMedia(MediaSnapshot snapshot)
+    /// <summary>Снимок локального плеера применяется, только если телефон не даёт свой.</summary>
+    private void ApplyMedia(MediaSnapshot? snapshot)
+    {
+        if (snapshot is null) return;
+        if (_phone.Media.Current is not null) return;
+        ApplyMediaCore(snapshot);
+    }
+
+    /// <summary>Медиа с телефона имеет приоритет: управлять им с островка удобнее.</summary>
+    private void ApplyPhoneMedia(MediaSnapshot snapshot)
+    {
+        ApplyMediaCore(snapshot);
+    }
+
+    private void ApplyMediaCore(MediaSnapshot snapshot)
     {
         Media.Title = snapshot.Title;
         Media.Artist = string.IsNullOrWhiteSpace(snapshot.Artist) ? "Неизвестный исполнитель" : snapshot.Artist;
@@ -818,20 +866,39 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void PlayPause_Click(object sender, RoutedEventArgs e) => await _media.TogglePlayAsync();
-    private async void Next_Click(object sender, RoutedEventArgs e) => await _media.NextAsync();
-    private async void Previous_Click(object sender, RoutedEventArgs e) => await _media.PreviousAsync();
+    private bool PhoneMediaActive => _phone.Media.Current is not null;
+
+    private async void PlayPause_Click(object sender, RoutedEventArgs e)
+    {
+        if (PhoneMediaActive) _phone.Media.Toggle();
+        else await _media.TogglePlayAsync();
+    }
+
+    private async void Next_Click(object sender, RoutedEventArgs e)
+    {
+        if (PhoneMediaActive) _phone.Media.Next();
+        else await _media.NextAsync();
+    }
+
+    private async void Previous_Click(object sender, RoutedEventArgs e)
+    {
+        if (PhoneMediaActive) _phone.Media.Previous();
+        else await _media.PreviousAsync();
+    }
+
     private void Seek_Down(object sender, MouseButtonEventArgs e) => _seeking = true;
+
     private async void Seek_Up(object sender, MouseButtonEventArgs e)
     {
         _seeking = false;
-        await _media.SeekAsync(MediaSeek.Value);
+        if (PhoneMediaActive) _phone.Media.Seek(MediaSeek.Value);
+        else await _media.SeekAsync(MediaSeek.Value);
     }
 
     private void UpdateNotifications(IReadOnlyList<NotificationItem> items)
     {
         Sync(Notifications, items);
-        NotificationStatus.Text = _notifications.Status;
+        NotificationStatus.Text = _notificationCenter.Status;
         var empty = Notifications.Count == 0;
         NoNotificationsHome.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         NoNotificationsPanel.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
@@ -840,18 +907,398 @@ public partial class MainWindow : Window
         ClearNotificationsPanelButton.IsEnabled = !empty;
     }
 
-    private async void RefreshNotifications_Click(object sender, RoutedEventArgs e) => await _notifications.RefreshAsync(false);
+    private async void RefreshNotifications_Click(object sender, RoutedEventArgs e) => await _notificationCenter.RefreshAsync();
 
     private void ClearNotifications_Click(object sender, RoutedEventArgs e)
     {
-        _notifications.ClearAll();
+        _notificationCenter.ClearAll();
         NotificationStatus.Text = "Список уведомлений очищен";
     }
 
     private void DismissNotification_Click(object sender, RoutedEventArgs e)
     {
-        if (((Button)sender).Tag is NotificationItem item) _notifications.Dismiss(item.Id);
+        if (((Button)sender).Tag is NotificationItem item) _notificationCenter.Dismiss(item.Id);
     }
+
+    // ─────────────── Телефон ───────────────
+
+    public ObservableCollection<PhoneDevice> PairedDevices { get; } = [];
+    public ObservableCollection<FileTransferProgress> FileTransfers { get; } = [];
+
+    private bool _qrVisible;
+
+    private void Phone_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (!_ready) return;
+        Dispatcher.BeginInvoke(() =>
+        {
+            _phone.ApplySettings();
+            UpdatePhonePill();
+            RefreshPhonePanel();
+        });
+    }
+
+    private void UpdatePhonePill()
+    {
+        var connected = _phone.Link.HasConnections;
+        PhonePillDot.Fill = (Brush)Application.Current.Resources[connected ? "AccentBrush" : "MutedBrush"];
+        PhonePillDot.ToolTip = connected ? "Телефон подключён" : "Телефон не подключён";
+        PhonePillDot.Visibility = Settings.Phone.Enabled && PanelOptions.Any(x => x.IsVisible && x.Id == "phone")
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void PhonePill_Click(object sender, MouseButtonEventArgs e)
+    {
+        Expand("phone");
+        e.Handled = true;
+    }
+
+    private void ConnectPhone_Click(object sender, RoutedEventArgs e)
+    {
+        if (!Settings.Phone.Enabled)
+        {
+            Settings.Phone.Enabled = true;
+            PhoneEnabledCheck.IsChecked = true;
+        }
+        // Порт мог закрыться по простою: показывать QR на мёртвый порт нельзя.
+        // ApplySettings сам поднимет сервер, если связь включена.
+        if (!_phone.IsRunning)
+        {
+            _phone.ApplySettings();
+            RefreshPhonePanel();
+        }
+        var code = _phone.CreatePairingCode();
+        ShowQr(code.WebUrl);
+        PhoneStatus.Text = $"Покажите QR телефону. Адрес {code.Address}:{code.Port}, код действует 10 минут. " +
+                           "Камера откроет страницу в браузере, а та запустит DI Link.";
+    }
+
+    private void ShowQr(string text)
+    {
+        try
+        {
+            var modules = QrCodeGenerator.Encode(text);
+            var size = modules.GetLength(0);
+            var brush = new SolidColorBrush(Colors.Black);
+            brush.Freeze();
+            var drawing = new DrawingGroup();
+            using (var context = drawing.Open())
+            {
+                context.DrawRectangle(Brushes.White, null, new Rect(0, 0, size, size));
+                for (var y = 0; y < size; y++)
+                for (var x = 0; x < size; x++)
+                    if (modules[x, y]) context.DrawRectangle(brush, null, new Rect(x, y, 1, 1));
+            }
+            drawing.Freeze();
+            QrImage.Source = new DrawingImage(drawing);
+            QrImage.Visibility = Visibility.Visible;
+            QrHint.Text = "Отсканируйте камерой телефона";
+            _qrVisible = true;
+            ShowManualPairing(text);
+        }
+        catch (Exception ex)
+        {
+            Diagnostics.Log("QR: построение не удалось — " + ex.Message);
+            PhoneStatus.Text = "Не удалось построить QR-код";
+        }
+    }
+
+    /// <summary>
+    /// Камера телефона не всегда умеет открывать приложение по нестандартной
+    /// схеме: она лишь распознаёт код и предлагает скопировать ссылку. Поэтому
+    /// рядом с QR показываем те же данные текстом — их можно переписать руками.
+    /// </summary>
+    private void ShowManualPairing(string url)
+    {
+        try
+        {
+            var query = url.Contains('?') ? url[(url.IndexOf('?') + 1)..] : "";
+            var values = query.Split('&', StringSplitOptions.RemoveEmptyEntries)
+                .Select(part => part.Split('=', 2))
+                .Where(parts => parts.Length == 2)
+                .ToDictionary(parts => parts[0], parts => parts[1]);
+
+            var address = values.TryGetValue("ip", out var ip) ? ip : "?";
+            var port = values.TryGetValue("port", out var pt) ? pt : "?";
+            var token = values.TryGetValue("token", out var tk) ? tk : "";
+
+            ManualAddressText.Text = $"Адрес: {address}:{port}";
+            ManualTokenText.Text = $"Ключ: {token}";
+            ManualUrlText.Text = $"Ссылка: {url}";
+            ManualPairBlock.Visibility = Visibility.Visible;
+        }
+        catch (Exception ex)
+        {
+            Diagnostics.Log("QR: ручной ввод не показан — " + ex.Message);
+        }
+    }
+
+    private void CopyPairingLink_Click(object sender, RoutedEventArgs e)
+    {
+        var text = ManualUrlText.Text;
+        var url = text.StartsWith("Ссылка: ", StringComparison.Ordinal) ? text[8..].Trim() : text.Trim();
+        CopyToClipboard(url, "Ссылка скопирована");
+    }
+
+    private void CopyPairingToken_Click(object sender, RoutedEventArgs e)
+    {
+        var text = ManualTokenText.Text;
+        var token = text.StartsWith("Ключ: ", StringComparison.Ordinal) ? text[6..].Trim() : text.Trim();
+        CopyToClipboard(token, "Ключ скопирован");
+    }
+
+    private void CopyToClipboard(string text, string message)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        try
+        {
+            Clipboard.SetText(text);
+            ShowPhoneStatus(message);
+        }
+        catch (Exception ex)
+        {
+            Diagnostics.Log("Буфер обмена: копирование не удалось — " + ex.Message);
+            ShowPhoneStatus("Не удалось скопировать");
+        }
+    }
+
+    private void ForgetDevice_Click(object sender, RoutedEventArgs e)
+    {
+        if (((Button)sender).Tag is not PhoneDevice device) return;
+        _phone.Forget(device.Id);
+        RefreshPhonePanel();
+        ShowPhoneStatus($"Устройство «{device.Name}» забыто");
+    }
+
+    private void RefreshPhonePanel()
+    {
+        if (!IsInitialized) return;
+        Sync(PairedDevices, _phone.Devices.Devices);
+        PairedDevicesList.Visibility = PairedDevices.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        NoDevicesText.Visibility = PairedDevices.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
+        var connected = _phone.Link.HasConnections;
+        PhoneStateText.Text = !Settings.Phone.Enabled
+            ? "Связь с телефоном выключена"
+            : connected ? "Телефон подключён"
+            : _phone.IsRunning ? "Ожидание телефона" : "Порт закрыт — нажмите «Подключить»";
+        PhoneStateDot.Fill = (Brush)Application.Current.Resources[connected ? "AccentBrush" : "MutedBrush"];
+        PhoneServerText.Text = Settings.Phone.Enabled
+            ? $"{_phone.Status}  ·  порт {Settings.Phone.Port}"
+            : "Сервер не запущен";
+        PhonePendingText.Text = _phone.Planner.PendingCount > 0
+            ? $"{_phone.Planner.PendingCount} записей календаря и напоминаний ждут подключения"
+            : "Календарь и напоминания синхронизированы";
+        PhoneFolderText.Text = string.IsNullOrWhiteSpace(Settings.Phone.PcDownloadFolder)
+            ? $"Файлы с телефона: {_downloads.DownloadsPath}"
+            : $"Файлы с телефона: {Settings.Phone.PcDownloadFolder}";
+        if (!_qrVisible) QrImage.Visibility = Visibility.Collapsed;
+    }
+
+    private void ShowPhonePanel_Click(object sender, RoutedEventArgs e) => SelectTab("phone");
+
+    private void ShowPhoneStatus(string message) => PhoneStatus.Text = message;
+
+    private void ChoosePhoneFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog
+        {
+            InitialDirectory = string.IsNullOrWhiteSpace(Settings.Phone.PcDownloadFolder)
+                ? _downloads.DownloadsPath
+                : Settings.Phone.PcDownloadFolder,
+            Title = "Папка для файлов с телефона"
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        Settings.Phone.PcDownloadFolder = dialog.FolderName;
+        RefreshPhonePanel();
+    }
+
+    private void OpenPhoneFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var folder = string.IsNullOrWhiteSpace(Settings.Phone.PcDownloadFolder)
+            ? _downloads.DownloadsPath
+            : Settings.Phone.PcDownloadFolder;
+        OpenPath(folder);
+    }
+
+    private void ResetPhoneDevices_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var device in _phone.Devices.Devices.ToArray()) _phone.Forget(device.Id);
+        _phone.Devices.Clear();
+        RefreshPhonePanel();
+        ShowPhoneStatus("Все устройства отключены");
+    }
+
+    private void SendFileToPhone_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog { Title = "Отправить файл на телефон", CheckFileExists = true };
+        if (dialog.ShowDialog(this) != true) return;
+        SendFileToPhone(dialog.FileName);
+    }
+
+    private async void SendFileToPhone(string path)
+    {
+        var device = _phone.Link.ConnectedDevices.FirstOrDefault();
+        if (device is null)
+        {
+            ShowPhoneStatus("Телефон не подключён");
+            return;
+        }
+        await _phone.Files.SendAsync(device, path);
+        ShowPhoneStatus("Отправка: " + Path.GetFileName(path));
+    }
+
+    private void UpdateFileTransfer(FileTransferProgress progress)
+    {
+        var existing = FileTransfers.FirstOrDefault(x => x.Id == progress.Id);
+        var index = existing is null ? -1 : FileTransfers.IndexOf(existing);
+        if (index >= 0) FileTransfers[index] = progress;
+        else FileTransfers.Insert(0, progress);
+        while (FileTransfers.Count > 6) FileTransfers.RemoveAt(FileTransfers.Count - 1);
+        FileTransfersList.Visibility = FileTransfers.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        NoTransfersText.Visibility = FileTransfers.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
+        if (_currentTab == "phone") PhoneStatus.Text = progress.Details;
+    }
+
+    private void CompleteFileTransfer(FileTransferProgress progress)
+    {
+        UpdateFileTransfer(progress);
+        ShowPhoneStatus((progress.Incoming ? "Получен файл: " : "Отправлен файл: ") + progress.Name);
+        if (progress.Incoming) _quickFiles.Refresh();
+    }
+
+    private void CancelTransfer_Click(object sender, RoutedEventArgs e)
+    {
+        if (((Button)sender).Tag is not FileTransferProgress progress) return;
+        _phone.Files.Cancel(progress.Id);
+        FileTransfers.Remove(progress);
+        FileTransfersList.Visibility = FileTransfers.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        NoTransfersText.Visibility = FileTransfers.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>Мини-карточка о тексте с телефона: только если пользователь её включил.</summary>
+    private void OnClipboardFromPhone()
+    {
+        if (!Settings.Phone.ClipboardPreview) return;
+        if (_expanded || _toastVisible || _activeReminder is not null) return;
+        ShowToast(new NotificationItem("", "Телефон", "Скопировано с телефона", "", DateTime.Now)
+        {
+            Source = "phone"
+        });
+    }
+
+    /// <summary>Применяет запись планера, пришедшую с телефона, к коллекциям окна.</summary>
+    private void ApplyPlannerRecord(PlannerRecord record)
+    {
+        if (record.Kind == PlannerRecord.ReminderKind)
+        {
+            var reminder = _allReminders.FirstOrDefault(x => x.Id == record.Id);
+            if (record.Deleted)
+            {
+                if (reminder is not null)
+                {
+                    _allReminders.Remove(reminder);
+                    if (ReferenceEquals(reminder, _activeReminder)) HideReminderPopup();
+                }
+            }
+            else
+            {
+                if (reminder is null)
+                {
+                    reminder = new ReminderItem { Id = record.Id };
+                    _allReminders.Add(reminder);
+                }
+                reminder.Title = record.Title;
+                reminder.Due = FromUnix(record.Due);
+                reminder.Done = record.Done;
+                reminder.CompletedAt = record.CompletedAt is { } completed ? FromUnix(completed) : null;
+                reminder.Source = record.Source;
+                reminder.EventId = record.EventId;
+            }
+            _reminderService.Save(_allReminders);
+            RenderReminders();
+            CheckReminders();
+            return;
+        }
+
+        var item = CalendarEvents.FirstOrDefault(x => x.Id == record.Id);
+        if (record.Deleted)
+        {
+            if (item is not null) CalendarEvents.Remove(item);
+        }
+        else
+        {
+            if (item is null)
+            {
+                item = new CalendarEventItem { Id = record.Id };
+                CalendarEvents.Add(item);
+            }
+            item.Title = record.Title;
+            item.Start = FromUnix(record.Start);
+            item.End = FromUnix(record.End);
+            item.IsAllDay = record.AllDay;
+            item.ReminderMinutes = record.ReminderMinutes;
+            item.ReminderId = record.ReminderId;
+        }
+        _calendarService.Save(CalendarEvents);
+        if (_currentTab == "calendar") RenderCalendar();
+        else UpdateHomeCalendar();
+    }
+
+    private static DateTime FromUnix(long milliseconds) =>
+        milliseconds <= 0
+            ? DateTime.MinValue
+            : DateTimeOffset.FromUnixTimeMilliseconds(milliseconds).ToLocalTime().DateTime;
+
+    private static long ToUnix(DateTime value) =>
+        new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Local)).ToUnixTimeMilliseconds();
+
+    /// <summary>Отправляет локально созданное событие в планер.</summary>
+    private void SyncEventToPhone(CalendarEventItem item) => _phone.Planner.Upsert(new PlannerRecord
+    {
+        Id = item.Id,
+        Kind = PlannerRecord.EventKind,
+        Title = item.Title,
+        Start = ToUnix(item.Start),
+        End = ToUnix(item.End),
+        AllDay = item.IsAllDay,
+        ReminderMinutes = item.ReminderMinutes,
+        ReminderId = item.ReminderId
+    });
+
+    private void SyncReminderToPhone(ReminderItem item) => _phone.Planner.Upsert(new PlannerRecord
+    {
+        Id = item.Id,
+        Kind = PlannerRecord.ReminderKind,
+        Title = item.Title,
+        Due = ToUnix(item.Due),
+        Done = item.Done,
+        CompletedAt = item.CompletedAt is { } completed ? ToUnix(completed) : null,
+        Source = item.Source,
+        EventId = item.EventId
+    });
+
+    /// <summary>Перетаскивание файла на островок отправляет его на телефон.</summary>
+    private void Window_DragOver(object sender, DragEventArgs e)
+    {
+        var hasFile = Settings.Phone.Enabled && _phone.Link.HasConnections &&
+                      e.Data.GetDataPresent(DataFormats.FileDrop) &&
+                      e.Data.GetData(DataFormats.FileDrop) is string[] { Length: 1 } files &&
+                      File.Exists(files[0]);
+        e.Effects = hasFile ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void Window_Drop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        if (!Settings.Phone.Enabled) return;
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: 1 } files) return;
+        var path = files[0];
+        if (!File.Exists(path)) return;
+        SendFileToPhone(path);
+    }
+
 
     private void UpdateRadioStates()
     {
@@ -1098,6 +1545,7 @@ public partial class MainWindow : Window
         CalendarEvents.Add(item);
         CalendarTitleInput.Clear();
         _calendarService.Save(CalendarEvents);
+        SyncEventToPhone(item);
         RenderCalendar();
         CalendarStatus.Text = $"«{title}» добавлено";
     }
@@ -1106,6 +1554,7 @@ public partial class MainWindow : Window
     {
         if (((Button)sender).Tag is not CalendarEventItem item) return;
         CalendarEvents.Remove(item);
+        _phone.Planner.Tombstone(item.Id, PlannerRecord.EventKind);
         if (!string.IsNullOrEmpty(item.ReminderId))
         {
             _allReminders.RemoveAll(x => x.Id == item.ReminderId);
@@ -1177,10 +1626,12 @@ public partial class MainWindow : Window
             reminder.EventId = item.Id;
             CalendarEvents.Add(item);
             _calendarService.Save(CalendarEvents);
+            SyncEventToPhone(item);
             if (_currentTab == "calendar") RenderCalendar();
             else UpdateHomeCalendar();
         }
         _reminderService.Save(_allReminders);
+        SyncReminderToPhone(reminder);
         RenderReminders();
         CheckReminders();
     }
@@ -1409,6 +1860,7 @@ public partial class MainWindow : Window
         reminder.Done = true;
         reminder.CompletedAt = DateTime.Now;
         _reminderService.Save(_allReminders);
+        SyncReminderToPhone(reminder);
         RenderReminders();
     }
 
@@ -1425,10 +1877,12 @@ public partial class MainWindow : Window
                 item.End = newStart.Add(item.End - item.Start);
                 item.Start = newStart;
                 _calendarService.Save(CalendarEvents);
+                SyncEventToPhone(item);
                 RenderCalendar();
             }
         }
         _reminderService.Save(_allReminders);
+        SyncReminderToPhone(reminder);
         RenderReminders();
     }
 
@@ -1450,6 +1904,7 @@ public partial class MainWindow : Window
     {
         if (((Button)sender).Tag is not ReminderItem reminder) return;
         _allReminders.Remove(reminder);
+        _phone.Planner.Tombstone(reminder.Id, PlannerRecord.ReminderKind);
         if (ReferenceEquals(reminder, _activeReminder)) HideReminderPopup();
         if (!string.IsNullOrEmpty(reminder.EventId))
         {
@@ -1457,6 +1912,7 @@ public partial class MainWindow : Window
             if (item is not null)
             {
                 CalendarEvents.Remove(item);
+                _phone.Planner.Tombstone(item.Id, PlannerRecord.EventKind);
                 _calendarService.Save(CalendarEvents);
                 RenderCalendar();
             }
@@ -1804,7 +2260,8 @@ public partial class MainWindow : Window
         _weatherCts?.Cancel();
         _chatCts?.Cancel();
         if (_windowHandle != IntPtr.Zero) NativeMethods.RemoveClipboardFormatListener(_windowHandle);
-        _notifications.Dispose();
+        _notificationCenter.Dispose();
+        _phone.Dispose();
         _media.Dispose();
         _system.Dispose();
         _downloads.Dispose();

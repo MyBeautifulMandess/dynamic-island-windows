@@ -5,18 +5,27 @@
         WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" WindowStartupLocation="Manual" ShowActivated="False"
         Closing="Window_Closing" Loaded="Window_Loaded" Activated="Window_Activated"
+        AllowDrop="True" DragOver="Window_DragOver" Drop="Window_Drop"
         UseLayoutRounding="True" TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType">
     <Window.Resources>
         <DataTemplate x:Key="NotificationTemplate">
             <Border Background="{StaticResource CardBrush}" CornerRadius="12" Padding="12,9" Margin="0,0,0,6">
                 <Grid>
                     <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /><ColumnDefinition Width="28" /></Grid.ColumnDefinitions>
-                    <Border Background="{DynamicResource AccentBrush}" Width="26" Height="26" CornerRadius="8" VerticalAlignment="Top">
-                        <TextBlock Text="{Binding Initial}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" FontSize="12" />
-                    </Border>
+                    <Grid VerticalAlignment="Top">
+                        <Border Background="{DynamicResource AccentBrush}" Width="26" Height="26" CornerRadius="8">
+                            <TextBlock Text="{Binding Initial}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" FontSize="12" />
+                        </Border>
+                        <Border Background="#FF1B1B22" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1" CornerRadius="6" Width="13" Height="13"
+                                HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-4,-4"
+                                Visibility="{Binding FromPhone, Converter={StaticResource BoolVisibility}}">
+                            <TextBlock Text="&#xE8EA;" FontFamily="{StaticResource IconFont}" FontSize="7.5" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource AccentBrush}" />
+                        </Border>
+                    </Grid>
                     <StackPanel Grid.Column="1" Margin="9,0,4,0">
                         <TextBlock FontSize="10.5" Foreground="{StaticResource MutedBrush}" TextWrapping="NoWrap">
-                            <Run Text="{Binding AppName, Mode=OneWay}" /><Run Text="  ·  " /><Run Text="{Binding Time, Mode=OneWay}" />
+                            <Run Text="{Binding SourceLabel, Mode=OneWay}" /><Run Text="  ·  " /><Run Text="{Binding Time, Mode=OneWay}" />
                         </TextBlock>
                         <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Margin="0,2,0,0" />
                         <TextBlock Text="{Binding Body}" Foreground="{StaticResource MutedBrush}" FontSize="11.5" MaxHeight="32" TextTrimming="CharacterEllipsis" />
@@ -99,7 +108,13 @@
                 <Grid>
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <TextBlock Text="{Binding Preview}" MaxHeight="45" TextTrimming="CharacterEllipsis" FontSize="12.5" />
-                    <TextBlock Grid.Column="1" Text="{Binding Time}" Foreground="{StaticResource MutedBrush}" FontSize="10.5" Margin="10,0,0,0" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Top">
+                        <Border Background="{DynamicResource AccentBrush}" CornerRadius="5" Padding="5,1" Margin="0,0,6,0"
+                                Visibility="{Binding FromPhone, Converter={StaticResource BoolVisibility}}">
+                            <TextBlock Text="Телефон" FontSize="9" Foreground="White" />
+                        </Border>
+                        <TextBlock Text="{Binding Time}" Foreground="{StaticResource MutedBrush}" FontSize="10.5" />
+                    </StackPanel>
                 </Grid>
             </Button>
         </DataTemplate>
@@ -158,6 +173,9 @@
                                    TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" MaxWidth="130" VerticalAlignment="Center" />
                     </StackPanel>
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <Ellipse x:Name="PhonePillDot" Width="7" Height="7" Margin="0,0,9,0" VerticalAlignment="Center"
+                                 Fill="{StaticResource MutedBrush}" Visibility="Collapsed" ToolTip="Телефон не подключён"
+                                 MouseLeftButtonDown="PhonePill_Click" />
                         <TextBlock x:Name="BatteryText" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,0,9,0" />
                         <TextBlock x:Name="ClockText" Text="00:00" FontSize="12" FontWeight="SemiBold" />
                     </StackPanel>
@@ -470,6 +488,105 @@
                                 <ListBox Grid.Row="2" ItemsSource="{Binding ClipboardItems}" Style="{StaticResource VirtualList}" ItemTemplate="{StaticResource ClipboardTemplate}" />
                             </Grid>
 
+                            <!-- Телефон -->
+                            <Grid x:Name="PhonePanel" Visibility="Collapsed">
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                                <Grid>
+                                    <TextBlock Text="Телефон" FontSize="21" FontWeight="SemiBold" FontFamily="{StaticResource DisplayFont}" VerticalAlignment="Center" />
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="Отправить файл" Click="SendFileToPhone_Click" FontSize="12" />
+                                        <Button Content="Подключить" Style="{StaticResource PrimaryButton}" Click="ConnectPhone_Click" Margin="6,0,0,0" FontSize="12" />
+                                    </StackPanel>
+                                </Grid>
+                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,10,0,0">
+                                    <StackPanel>
+                                        <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                                            <StackPanel>
+                                                <Grid>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Ellipse x:Name="PhoneStateDot" Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,8,0" Fill="{StaticResource MutedBrush}" />
+                                                        <TextBlock x:Name="PhoneStateText" FontWeight="SemiBold" VerticalAlignment="Center" Text="Связь с телефоном выключена" />
+                                                    </StackPanel>
+                                                </Grid>
+                                                <TextBlock x:Name="PhoneServerText" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,5,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock x:Name="PhonePendingText" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,3,0,0" />
+                                                <TextBlock x:Name="PhoneStatus" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap" />
+                                                <Border x:Name="QrImageBorder" Background="White" CornerRadius="12" Padding="8" HorizontalAlignment="Left" Margin="0,10,0,0"
+                                                        Visibility="{Binding ElementName=QrImage, Path=Visibility}">
+                                                    <StackPanel>
+                                                        <Image x:Name="QrImage" Width="176" Height="176" Stretch="Fill" RenderOptions.BitmapScalingMode="NearestNeighbor" Visibility="Collapsed" />
+                                                        <TextBlock x:Name="QrHint" FontSize="9" Foreground="#FF3A3A44" MaxWidth="176" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                                    </StackPanel>
+                                                </Border>
+                                                <StackPanel x:Name="ManualPairBlock" Margin="0,10,0,0" Visibility="Collapsed">
+                                                    <TextBlock Text="Если камера телефона не открывает приложение, перепишите или скопируйте эти данные:" Style="{StaticResource SectionHint}" TextWrapping="Wrap" />
+                                                    <TextBlock x:Name="ManualAddressText" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" />
+                                                    <TextBlock x:Name="ManualTokenText" FontSize="12" Margin="0,3,0,0" TextWrapping="Wrap" />
+                                                    <TextBlock x:Name="ManualUrlText" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,3,0,0" TextWrapping="Wrap" />
+                                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                                        <Button Content="Скопировать ссылку" Click="CopyPairingLink_Click" FontSize="12" />
+                                                        <Button Content="Скопировать ключ" Click="CopyPairingToken_Click" Margin="6,0,0,0" FontSize="12" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                                            <StackPanel>
+                                                <TextBlock Text="Передачи" Style="{StaticResource SectionTitle}" />
+                                                <TextBlock Text="Перетащите файл на островок или нажмите «Отправить файл». Файлы с телефона падают в выбранную папку." Style="{StaticResource SectionHint}" />
+                                                <ListBox x:Name="FileTransfersList" ItemsSource="{Binding FileTransfers}" Style="{StaticResource VirtualList}" MaxHeight="180" Visibility="Collapsed">
+                                                    <ListBox.ItemTemplate><DataTemplate>
+                                                        <Border Background="#1CFFFFFF" CornerRadius="10" Padding="10,7" Margin="0,0,0,4">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                                <StackPanel>
+                                                                    <TextBlock Text="{Binding Title}" FontSize="12" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                                                                    <TextBlock Text="{Binding Details}" FontSize="10.5" Foreground="{StaticResource MutedBrush}" />
+                                                                    <ProgressBar Value="{Binding Percent}" Maximum="100" Height="3" Margin="0,5,6,0" Foreground="{DynamicResource AccentBrush}" />
+                                                                </StackPanel>
+                                                                <Button Grid.Column="1" Style="{StaticResource IconButton}" Content="&#xE711;" Width="28" Height="28" FontSize="12"
+                                                                        Tag="{Binding}" Click="CancelTransfer_Click" ToolTip="Отменить" VerticalAlignment="Center" />
+                                                            </Grid>
+                                                        </Border>
+                                                    </DataTemplate></ListBox.ItemTemplate>
+                                                </ListBox>
+                                                <TextBlock x:Name="NoTransfersText" Text="Передач пока не было" FontSize="11" Foreground="{StaticResource MutedBrush}" />
+                                                <Grid Margin="0,8,0,0">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                    <TextBlock x:Name="PhoneFolderText" Style="{StaticResource RowLabel}" />
+                                                    <Button Grid.Column="1" Content="Папка" Click="ChoosePhoneFolder_Click" FontSize="12" Margin="6,0,0,0" />
+                                                    <Button Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE8A7;" Width="32" Height="30" FontSize="14" Click="OpenPhoneFolder_Click" Margin="5,0,0,0" ToolTip="Открыть папку" />
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                                            <StackPanel>
+                                                <TextBlock Text="Сопряжённые устройства" Style="{StaticResource SectionTitle}" />
+                                                <TextBlock Text="Ключ устройства хранится локально с шифрованием Windows DPAPI." Style="{StaticResource SectionHint}" />
+                                                <ListBox x:Name="PairedDevicesList" ItemsSource="{Binding PairedDevices}" Style="{StaticResource VirtualList}" Visibility="Collapsed">
+                                                    <ListBox.ItemTemplate><DataTemplate>
+                                                        <Border Background="#1CFFFFFF" CornerRadius="10" Padding="10,7" Margin="0,0,0,4">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                                <StackPanel>
+                                                                    <TextBlock Text="{Binding Name}" FontSize="12.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                                                                    <TextBlock Text="{Binding Details}" FontSize="10.5" Foreground="{StaticResource MutedBrush}" />
+                                                                </StackPanel>
+                                                                <Button Grid.Column="1" Content="Забыть" FontSize="11.5" Padding="9,4" Tag="{Binding}" Click="ForgetDevice_Click" VerticalAlignment="Center" />
+                                                            </Grid>
+                                                        </Border>
+                                                    </DataTemplate></ListBox.ItemTemplate>
+                                                </ListBox>
+                                                <TextBlock x:Name="NoDevicesText" Text="Пока ни один телефон не подключён. Нажмите «Подключить» и отсканируйте QR." FontSize="11" Foreground="{StaticResource MutedBrush}" />
+                                                <Button Content="Отключить все устройства" HorizontalAlignment="Left" FontSize="11.5" Click="ResetPhoneDevices_Click" Margin="0,8,0,0" />
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Grid>
+
                             <!-- Загрузки -->
                             <Grid x:Name="FilesPanel" Visibility="Collapsed">
                                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
@@ -645,6 +762,44 @@
                                                     <ComboBoxItem Content="Мягкий" Tag="soft" /><ComboBoxItem Content="Двойной" Tag="double" /><ComboBoxItem Content="Тихий" Tag="quiet" />
                                                 </ComboBox>
                                             </Grid>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                                        <StackPanel>
+                                            <TextBlock Text="Телефон" Style="{StaticResource SectionTitle}" />
+                                            <TextBlock Text="Связь с Android-телефоном по Wi-Fi. Только локальная сеть, без облака." Style="{StaticResource SectionHint}" />
+                                            <CheckBox x:Name="PhoneEnabledCheck" Content="Связь с телефоном" IsChecked="{Binding Settings.Phone.Enabled, Mode=TwoWay}" />
+                                            <CheckBox Content="Синхронизация буфера обмена" IsChecked="{Binding Settings.Phone.ClipboardSync, Mode=TwoWay}" />
+                                            <CheckBox Content="Показывать текст с телефона карточкой" IsChecked="{Binding Settings.Phone.ClipboardPreview, Mode=TwoWay}" Margin="20,0,0,6" FontSize="11.5" />
+                                            <CheckBox Content="Уведомления телефона" IsChecked="{Binding Settings.Phone.Notifications, Mode=TwoWay}" />
+                                            <CheckBox Content="Календарь и напоминания" IsChecked="{Binding Settings.Phone.PlannerSync, Mode=TwoWay}" />
+                                            <CheckBox Content="Передача файлов" IsChecked="{Binding Settings.Phone.FileTransfer, Mode=TwoWay}" />
+                                            <CheckBox Content="Медиа с телефона" IsChecked="{Binding Settings.Phone.MediaSync, Mode=TwoWay}" />
+                                            <Grid Margin="0,6,0,0">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <TextBlock Text="Порт" Style="{StaticResource RowLabel}" />
+                                                <TextBox Grid.Column="1" Text="{Binding Settings.Phone.Port, Mode=TwoWay}" ToolTip="По умолчанию 19532" />
+                                            </Grid>
+                                            <Grid Margin="0,6,0,0">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <TextBlock Text="Не показывать" Style="{StaticResource RowLabel}" />
+                                                <TextBox Grid.Column="1" Text="{Binding Settings.Phone.IgnoredApps, Mode=TwoWay}" AcceptsReturn="False"
+                                                         ToolTip="Пакеты Android через запятую, например com.example.app, org.telegram.messenger" />
+                                            </Grid>
+                                            <CheckBox Content="Закрывать порт без телефона" IsChecked="{Binding Settings.Phone.IdleShutdown, Mode=TwoWay}" Margin="0,8,0,0" />
+                                            <Grid Margin="0,6,0,0">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <TextBlock Text="Простой, мин" Style="{StaticResource RowLabel}" />
+                                                <TextBox Grid.Column="1" Text="{Binding Settings.Phone.IdleMinutes, Mode=TwoWay}"
+                                                         ToolTip="Сколько минут без подключений держать порт открытым. 1–240" />
+                                            </Grid>
+                                            <TextBlock Text="Пока телефон не подключён, порт остаётся открытым только это время. Затем сервер закрывается и открывается снова по кнопке «Подключить телефон»."
+                                                       Style="{StaticResource SectionHint}" Margin="0,4,0,0" />
+                                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                                <Button Content="Подключить телефон" Click="ConnectPhone_Click" FontSize="12" />
+                                                <Button Content="Панель телефона" Click="ShowPhonePanel_Click" Margin="6,0,0,0" FontSize="12" />
+                                            </StackPanel>
                                         </StackPanel>
                                     </Border>
 

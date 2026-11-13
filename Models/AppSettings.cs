@@ -63,4 +63,5 @@ public sealed class AppSettings : ObservableObject
     public string AiProvider { get => _aiProvider; set => Set(ref _aiProvider, value); }
     public string AiKey { get => _aiKey; set => Set(ref _aiKey, value); }
     public string AiModel { get => _aiModel; set => Set(ref _aiModel, value); }
+    public PhoneLinkSettings Phone { get; set; } = new();
 }
