@@ -10,6 +10,7 @@ using System.Windows.Input;
 using System.Windows.Media.Animation;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Runtime.InteropServices;
 using System.Windows.Threading;
 using DynamicIsland.Models;
 using DynamicIsland.Services;
@@ -47,7 +48,14 @@ public partial class MainWindow : Window
     private TrayIconService? _tray;
     private readonly List<FrameworkElement> _panels = [];
     private readonly Dictionary<string, FrameworkElement> _panelMap = [];
-    private readonly Dictionary<FrameworkElement, TranslateTransform> _panelTransforms = [];
+    private readonly Dictionary<FrameworkElement, Motion> _motions = [];
+    private readonly Dictionary<string, Button> _navButtons = [];
+    private EventHandler? _sizeHandler;
+    private double _visibleHeight = 35;
+    private readonly TranslateTransform _islandShift = new();
+    private static readonly NativeMethods.LowLevelMouseProc _mouseProc = MouseHookProc;
+    private IntPtr _mouseHook;
+    private int _frames;
     private readonly ObservableCollection<CalendarDayItem> _pickerDays = [];
     private readonly ObservableCollection<TimeSlot> _timeSlots = [];
     private IntPtr _windowHandle;
@@ -68,6 +76,10 @@ public partial class MainWindow : Window
     private static readonly TimeSpan MinTrimInterval = TimeSpan.FromSeconds(60);
     private bool _fullScreenActive;
     private string _currentTab = "home";
+    private string _lastValidBackground = "#141419";
+    private string _lastValidForeground = "#F5F5F7";
+    private string _lastValidAccent = "#8B7CFF";
+    private string _appliedThemeKey = "";
     private DateTime _calendarMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     private DateTime _selectedDay = DateTime.Today;
     private DateTime _pickerMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
@@ -79,6 +91,32 @@ public partial class MainWindow : Window
     private const double PopupWidth = 418;
     private const double PopupHeight = 158;
     private const int TickMilliseconds = 160;
+    private const int ExpandDuration = 340;
+    private const int CollapseDuration = 240;
+    private const int PinchDuration = 95;
+    private const int WhMouseLowLevel = 14;
+    private const int WmLeftButtonDown = 0x0201;
+    private const int PeekDuration = 200;
+    private const int ToastDuration = 200;
+    private const int PanelFadeDuration = 140;
+    private const int PanelSwapDuration = 200;
+
+    /// <summary>
+    /// Масштаб и смещение элемента для анимаций появления и переходов.
+    /// </summary>
+    private sealed class Motion
+    {
+        public ScaleTransform Scale { get; } = new(1, 1);
+        public TranslateTransform Translate { get; } = new();
+        public TransformGroup Group { get; }
+
+        public Motion()
+        {
+            Group = new TransformGroup();
+            Group.Children.Add(Scale);
+            Group.Children.Add(Translate);
+        }
+    }
 
     public AppSettings Settings { get; }
     public Models.MediaState Media { get; } = new();
@@ -103,7 +141,12 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        IslandBorder.RenderTransform = _islandShift;
         Settings = _settingsService.Load();
+        if (ThemeService.TryParse(Settings.BackgroundColor, out _)) _lastValidBackground = Settings.BackgroundColor;
+        if (ThemeService.TryParse(Settings.ForegroundColor, out _)) _lastValidForeground = Settings.ForegroundColor;
+        if (ThemeService.TryParse(Settings.Accent, out _)) _lastValidAccent = Settings.Accent;
+        BuildColorSwatches();
         _quickFiles = new QuickFilesService(() => Settings.QuickFolder);
         _phone = new PhoneLinkCoordinator(_clipboard, _downloads.DownloadsPath) { SettingsProvider = () => Settings.Phone };
         _phoneNotifications = _phone.Notifications;
@@ -299,6 +342,7 @@ public partial class MainWindow : Window
     private void BuildNavigation()
     {
         NavListPanel.Children.Clear();
+        _navButtons.Clear();
         foreach (var option in PanelOptions.Where(x => x.IsVisible).Append(new PanelOption { Id = "settings", Title = "Настройки", IsVisible = true }))
         {
             var button = new Button
@@ -310,10 +354,150 @@ public partial class MainWindow : Window
                 FontSize = 14,
                 Tag = option.Id,
                 ToolTip = option.Title,
-                FontFamily = (System.Windows.Media.FontFamily)Application.Current.Resources["IconFont"]
+                FontFamily = (System.Windows.Media.FontFamily)Application.Current.Resources["IconFont"],
+                Background = new SolidColorBrush(Colors.Transparent),
+                Foreground = new SolidColorBrush(Colors.White)
             };
             button.Click += Nav_Click;
             NavListPanel.Children.Add(button);
+            _navButtons[option.Id] = button;
+        }
+        UpdateNavColors(animate: false);
+        AnimateNavSelection(_currentTab);
+    }
+
+    /// <summary>
+    /// Цвета кнопок навигации: выбранная подсвечивается акцентом, остальные
+    /// держат общий цвет текста. Переход между панелями видно по смене подсветки.
+    /// </summary>
+    private void AnimateNavSelection(string selectedId)
+    {
+        foreach (var (id, button) in _navButtons)
+        {
+            var background = button.Background as SolidColorBrush;
+            var foreground = button.Foreground as SolidColorBrush;
+            if (background is null || foreground is null) continue;
+            var selected = id == selectedId;
+            var accent = (Application.Current.Resources["AccentBrush"] as SolidColorBrush)?.Color ?? Colors.MediumPurple;
+            var accentSoft = (Application.Current.Resources["AccentSoftBrush"] as SolidColorBrush)?.Color ?? Colors.Transparent;
+            var text = (Application.Current.Resources["TextBrush"] as SolidColorBrush)?.Color ?? Colors.White;
+            AnimateBrushColor(background, selected ? accentSoft : Colors.Transparent, 220, true);
+            AnimateBrushColor(foreground, selected ? accent : text, 220, true);
+        }
+    }
+
+    /// <summary>
+    /// Пересобирает цвета кнопок навигации под текущую тему.
+    /// </summary>
+    private void UpdateNavColors(bool animate)
+    {
+        foreach (var button in _navButtons.Values)
+        {
+            if (button.Background is not SolidColorBrush background) continue;
+            if (button.Foreground is not SolidColorBrush foreground) continue;
+            var accent = (Application.Current.Resources["AccentBrush"] as SolidColorBrush)?.Color ?? Colors.MediumPurple;
+            var text = (Application.Current.Resources["TextBrush"] as SolidColorBrush)?.Color ?? Colors.White;
+            var selected = (string?)button.Tag == _currentTab;
+            var accentSoft = (Application.Current.Resources["AccentSoftBrush"] as SolidColorBrush)?.Color ?? Colors.Transparent;
+            AnimateBrushColor(background, selected ? accentSoft : Colors.Transparent, 220, animate);
+            AnimateBrushColor(foreground, selected ? accent : text, 220, animate);
+        }
+    }
+
+    private static void AnimateBrushColor(SolidColorBrush brush, Color target, int milliseconds, bool animate)
+    {
+        // Текущее (в том числе анимируемое) значение становится базой — иначе
+        // цвет прыгал бы назад при каждой новой анимации.
+        var current = brush.Color;
+        brush.BeginAnimation(SolidColorBrush.ColorProperty, null);
+        brush.Color = current;
+        if (!animate || milliseconds <= 0)
+        {
+            brush.Color = target;
+            return;
+        }
+        var animation = new ColorAnimation(current, target, TimeSpan.FromMilliseconds(milliseconds))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            FillBehavior = FillBehavior.HoldEnd
+        };
+        brush.BeginAnimation(SolidColorBrush.ColorProperty, animation);
+    }
+
+    private static readonly (string Name, string Hex)[] AccentPresets =
+    [
+        ("Лиловый", "#8B7CFF"),
+        ("Зелёный", "#32D74B"),
+        ("Синий", "#0A84FF"),
+        ("Оранжевый", "#FF9F0A"),
+        ("Красный", "#FF453A"),
+        ("Бирюзовый", "#40C8E0")
+    ];
+
+    private static readonly (string Name, string Hex)[] BackgroundPresets =
+    [
+        ("Графит", "#141419"),
+        ("Уголь", "#0B0B0F"),
+        ("Синий графит", "#101826"),
+        ("Слива", "#1B1220"),
+        ("Тёплый", "#1C1814"),
+        ("Светлый", "#F2F2F5"),
+        ("Бумага", "#FAF7F2")
+    ];
+
+    private static readonly (string Name, string Hex)[] ForegroundPresets =
+    [
+        ("Белый", "#F5F5F7"),
+        ("Тёплый белый", "#F0E6D2"),
+        ("Голубой", "#DCE7FF"),
+        ("Чёрный", "#1A1A1F"),
+        ("Тёмно-серый", "#4A4A52")
+    ];
+
+    private void BuildColorSwatches()
+    {
+        FillSwatches(AccentSwatches, AccentPresets, hex => Settings.Accent = hex);
+        FillSwatches(BackgroundSwatches, BackgroundPresets, hex => Settings.BackgroundColor = hex);
+        FillSwatches(ForegroundSwatches, ForegroundPresets, hex => Settings.ForegroundColor = hex);
+        UpdateSwatchSelection();
+    }
+
+    private void FillSwatches(Panel host, (string Name, string Hex)[] presets, Action<string> apply)
+    {
+        host.Children.Clear();
+        foreach (var (name, hex) in presets)
+        {
+            if (!ThemeService.TryParse(hex, out var color)) continue;
+            var button = new Button
+            {
+                Style = (Style)Application.Current.Resources["Swatch"],
+                Background = new SolidColorBrush(color),
+                ToolTip = $"{name} · {hex}",
+                Tag = hex,
+                Cursor = System.Windows.Input.Cursors.Hand
+            };
+            button.Click += (_, _) => apply(hex);
+            host.Children.Add(button);
+        }
+    }
+
+    /// <summary>
+    /// Отмечает выбранные образцы цветов тонкой рамкой.
+    /// </summary>
+    private void UpdateSwatchSelection()
+    {
+        UpdateSwatches(AccentSwatches, Settings.Accent);
+        UpdateSwatches(BackgroundSwatches, Settings.BackgroundColor);
+        UpdateSwatches(ForegroundSwatches, Settings.ForegroundColor);
+    }
+
+    private static void UpdateSwatches(Panel host, string? selected)
+    {
+        foreach (var element in host.Children.OfType<Button>())
+        {
+            var ring = element.Template?.FindName("SelectedRing", element) as Border;
+            if (ring is null) continue;
+            ring.Opacity = string.Equals((string?)element.Tag, selected, StringComparison.OrdinalIgnoreCase) ? 1 : 0;
         }
     }
 
@@ -455,110 +639,294 @@ public partial class MainWindow : Window
         if (_expanded || _toastVisible || _closing || _activeReminder is not null) return;
         _peekVisible = true;
         _collapseTimer.Stop();
+        StopIslandAnimation();
         ExpandedPanel.Visibility = Visibility.Collapsed;
         ToastPanel.Visibility = Visibility.Collapsed;
         CompactPanel.Visibility = Visibility.Visible;
+        CompactPanel.BeginAnimation(OpacityProperty, null);
+        CompactPanel.Opacity = 1;
+        ToastPanel.Opacity = 1;
+        ResetMotion(CompactPanel);
         SetWindowSize(Settings.IslandWidth, Settings.IslandHeight);
         PositionWindow();
         if (!IsVisible) Show();
         NativeMethods.AssertTopmost(_windowHandle);
-        AnimateIn(190);
+        AnimateIslandIn(PeekDuration);
     }
 
-    private void AnimateIn(int milliseconds)
+    /// <summary>
+    /// Появление островка: мягкое проявление фона и лёгкий масштаб пилюли.
+    /// </summary>
+    private void AnimateIslandIn(int milliseconds)
     {
         StopIslandAnimation();
-        IslandBorder.Opacity = Settings.Opacity;
+        IslandBorder.Opacity = 1;
         if (milliseconds <= 0) return;
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
         var duration = TimeSpan.FromMilliseconds(milliseconds);
-        var full = new Rect(0, 0, Width, Height);
-        var start = new Rect(0, 0, Width, Math.Min(Height * 0.45, Math.Max(6, Height * 0.45)));
-        IslandClip.Rect = full;
-        IslandClip.BeginAnimation(RectangleGeometry.RectProperty,
-            new RectAnimation(start, full, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop });
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
         IslandBorder.BeginAnimation(OpacityProperty,
-            new DoubleAnimation(0, Settings.Opacity, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop });
+            new DoubleAnimation(0, 1, duration) { EasingFunction = ease, FillBehavior = FillBehavior.HoldEnd });
+        AnimateScale(GetMotion(CompactPanel, 0.5), 0.94, 1, 0, 1, duration, ease);
     }
 
     private void StopIslandAnimation()
     {
-        IslandClip.BeginAnimation(RectangleGeometry.RectProperty, null);
         IslandBorder.BeginAnimation(OpacityProperty, null);
-        IslandClip.Rect = new Rect(0, 0, Width, Height);
+        IslandBorder.Opacity = 1;
     }
 
-    private void AnimateOut(int milliseconds, Action done)
+    /// <summary>
+    /// Плавная смена размера окна: ширина, высота и положение считаются
+    /// покадрово и применяются напрямую. Анимировать свойства Window
+    /// штатным способом нельзя — высота до окна не доходит, и панель
+    /// появлялась вниз рывком.
+    /// </summary>
+    private void AnimateSize(double targetWidth, double targetHeight, int milliseconds, bool grow, bool contentTransition = true, Action? completed = null)
     {
-        StopIslandAnimation();
-        IslandBorder.Opacity = Settings.Opacity;
-        if (milliseconds <= 0) { done(); return; }
-        var ease = new CubicEase { EasingMode = EasingMode.EaseIn };
-        var duration = TimeSpan.FromMilliseconds(milliseconds);
-        var full = new Rect(0, 0, Width, Height);
-        var end = new Rect(0, 0, Width, Math.Max(6, Height * 0.5));
-        IslandClip.Rect = full;
-        IslandClip.BeginAnimation(RectangleGeometry.RectProperty,
-            new RectAnimation(full, end, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop });
-        var fade = new DoubleAnimation(Settings.Opacity, 0, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
-        fade.Completed += (_, _) =>
-        {
-            StopIslandAnimation();
-            IslandBorder.Opacity = Settings.Opacity;
-            done();
-        };
-        IslandBorder.BeginAnimation(OpacityProperty, fade);
-    }
-
-    private void AnimateSize(double targetWidth, double targetHeight, int milliseconds)
-    {
-        var previousWidth = ActualWidth > 1 ? ActualWidth : Width;
-        var previousHeight = ActualHeight > 1 ? ActualHeight : Height;
+        var previousWidth = IslandBorder.Width > 1 ? IslandBorder.Width : Settings.IslandWidth;
+        var previousHeight = IslandBorder.Height > 1 ? IslandBorder.Height : Settings.IslandHeight;
         StopSizeAnimation();
+        var (targetLeft, targetTop) = GetTargetPosition(targetWidth);
+        var duration = Math.Max(1, milliseconds);
+
+        if (!IsVisible)
+        {
+            Width = targetWidth;
+            Height = targetHeight;
+            IslandBorder.Width = targetWidth;
+            IslandBorder.Height = targetHeight;
+            IslandBorder.Opacity = 1;
+            _islandShift.Y = 0;
+            _visibleHeight = targetHeight;
+            UpdateIslandClip();
+            Left = targetLeft;
+            Top = targetTop;
+            if (contentTransition) ApplyContentState(grow);
+            completed?.Invoke();
+            return;
+        }
+
+        // Прежняя анимация прозрачности не должна мешать новой.
+        IslandBorder.BeginAnimation(OpacityProperty, null);
+        if (contentTransition) AnimateContentTransition(grow, TimeSpan.FromMilliseconds(duration));
+        Top = targetTop;
+        // Окно сразу занимает целевой размер и остаётся по центру, а сам
+        // островок живёт внутри: сначала прежнее состояние уходит наверх
+        // и гаснет, и только потом на его месте появляется новое.
+        var windowHeight = Math.Max(Height > 1 ? Height : Settings.IslandHeight, targetHeight);
+        Width = targetWidth;
+        Height = windowHeight;
+        Left = targetLeft;
+        IslandBorder.Height = windowHeight;
+        // Содержимое панели держит целевой размер: тогда текст не
+        // переверстывается на каждом кадре и анимация не дёргается.
+        ExpandedPanel.Width = targetWidth;
+        ExpandedPanel.Height = targetHeight;
+        var startTime = DateTime.UtcNow;
+        var pinch = Math.Min(PinchDuration, duration / 3);
+        var main = Math.Max(80, duration - pinch);
+        var startShift = _islandShift.Y;
+        // Пилюля уходит за верхнюю кромку экрана целиком, большая панель
+        // лишь приподнимается — её всё равно убирает затухание.
+        var exitShift = grow ? -(previousHeight + 8) : -40;
+
+        void Handler(object? sender, EventArgs e)
+        {
+            var elapsed = (DateTime.UtcNow - startTime).TotalMilliseconds;
+            double width;
+            double height;
+            double shift;
+            double opacity;
+            if (elapsed < pinch)
+            {
+                // Прежнее состояние уходит наверх и растворяется.
+                var k = EaseInOutCubic(elapsed / pinch);
+                width = previousWidth;
+                height = previousHeight;
+                shift = startShift + (exitShift - startShift) * k;
+                opacity = 1 - k;
+            }
+            else
+            {
+                // Новое состояние приходит на освободившееся место. Сначала
+                // размер доводится до цели, и только потом островок проявляется:
+                // иначе в центре мелькает прямоугольник.
+                var k = EaseInOutCubic(Math.Clamp((elapsed - pinch) / main, 0, 1));
+                var size = EaseInOutCubic(Math.Clamp(k / 0.55, 0, 1));
+                width = previousWidth + (targetWidth - previousWidth) * size;
+                height = previousHeight + (targetHeight - previousHeight) * size;
+                shift = exitShift * (1 - k);
+                opacity = k < 0.55 ? 0 : (k - 0.55) / 0.45;
+            }
+            IslandBorder.Width = width;
+            IslandBorder.Height = height;
+            IslandBorder.Opacity = opacity;
+            _islandShift.Y = shift;
+            _frames++;
+            if (elapsed < pinch + main) return;
+            CompositionTarget.Rendering -= Handler;
+            _sizeHandler = null;
+            Width = targetWidth;
+            Height = targetHeight;
+            IslandBorder.Width = targetWidth;
+            IslandBorder.Height = targetHeight;
+            IslandBorder.Opacity = 1;
+            _islandShift.Y = 0;
+            _visibleHeight = targetHeight;
+            UpdateIslandClip();
+            Left = targetLeft;
+            completed?.Invoke();
+        }
+
+        _sizeHandler = Handler;
+        CompositionTarget.Rendering += Handler;
+    }
+
+    private const double SliverWidth = 44;
+    private const double SliverHeight = 14;
+
+    /// <summary>
+    /// Плавный разгон и торможение: в начале и в конце скорость нулевая,
+    /// поэтому движение не дёргается на стыке фаз.
+    /// </summary>
+    private static double EaseInOutCubic(double t) =>
+        t < 0.5 ? 4 * t * t * t : 1 - Math.Pow(-2 * t + 2, 3) / 2;
+
+    /// <summary>
+    /// Уход островка за верхнюю кромку экрана: ровно то же движение, что и
+    /// у пилюли при раскрытии, — с разгоном и торможением.
+    /// </summary>
+    private void AnimateCloseOut(int milliseconds)
+    {
+        StopSizeAnimation();
+        IslandBorder.BeginAnimation(OpacityProperty, null);
+        var height = IslandBorder.ActualHeight > 1 ? IslandBorder.ActualHeight : IslandBorder.Height;
+        var startShift = _islandShift.Y;
+        var endShift = startShift - (height + 16);
+        var duration = Math.Max(1, milliseconds);
+        var startTime = DateTime.UtcNow;
+
+        void Handler(object? sender, EventArgs e)
+        {
+            var elapsed = (DateTime.UtcNow - startTime).TotalMilliseconds;
+            var k = EaseInOutCubic(Math.Clamp(elapsed / duration, 0, 1));
+            _islandShift.Y = startShift + (endShift - startShift) * k;
+            IslandBorder.Opacity = 1 - k;
+            if (elapsed < duration) return;
+            CompositionTarget.Rendering -= Handler;
+            _sizeHandler = null;
+            IslandBorder.Opacity = 1;
+            _islandShift.Y = 0;
+            // Во время анимации мог прийти тост или напоминание — прятать окно тогда нельзя.
+            if (_activeReminder is not null || _expanded || _toastVisible || _peekVisible) return;
+            ApplyContentState(false);
+            Hide();
+            SetWindowSize(Settings.IslandWidth, Settings.IslandHeight);
+            PositionWindow();
+            TrimMemory();
+        }
+
+        _sizeHandler = Handler;
+        CompositionTarget.Rendering += Handler;
+    }
+
+    /// <summary>
+    /// Плавное затухание с лёгким ускорением в конце — движение выглядит
+    /// мягким, но не вязким.
+    /// </summary>
+    private static double EaseOutCubic(double t) => 1 - Math.Pow(1 - t, 3);
+
+
+    private void StopSizeAnimation()
+    {
+        if (_sizeHandler is not null)
+        {
+            CompositionTarget.Rendering -= _sizeHandler;
+            _sizeHandler = null;
+        }
+    }
+
+    private (double Left, double Top) GetTargetPosition(double targetWidth)
+    {
         var monitor = GetTargetMonitor();
         var scale = GetMonitorScale(monitor.handle);
         var workLeft = monitor.info.Work.Left / scale;
         var workTop = monitor.info.Work.Top / scale;
         var workWidth = (monitor.info.Work.Right - monitor.info.Work.Left) / scale;
         var desiredLeft = workLeft + (workWidth - targetWidth) / 2 + Settings.HorizontalOffset;
-        var targetLeft = Math.Clamp(desiredLeft, workLeft, Math.Max(workLeft, workLeft + workWidth - targetWidth));
-        var targetTop = workTop;
-        var full = new Rect(0, 0, targetWidth, targetHeight);
-        Width = targetWidth;
-        Height = targetHeight;
-        Left = targetLeft;
-        Top = targetTop;
-        if (!IsVisible || milliseconds <= 0)
-        {
-            IslandClip.Rect = full;
-            return;
-        }
-
-        var startWidth = Math.Clamp(previousWidth, 120, targetWidth);
-        var startHeight = Math.Clamp(previousHeight, 28, targetHeight);
-        var start = new Rect((targetWidth - startWidth) / 2, 0, startWidth, startHeight);
-        IslandClip.Rect = full;
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-        var duration = TimeSpan.FromMilliseconds(milliseconds);
-        IslandClip.BeginAnimation(RectangleGeometry.RectProperty,
-            new RectAnimation(start, full, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop });
-        if (targetWidth > startWidth + 80 || targetHeight > startHeight + 40)
-            ExpandedPanel.BeginAnimation(OpacityProperty,
-                new DoubleAnimation(0.35, 1, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop });
+        var left = Math.Clamp(desiredLeft, workLeft, Math.Max(workLeft, workLeft + workWidth - targetWidth));
+        return (left, workTop);
     }
 
-    private void StopSizeAnimation()
+    /// <summary>
+    /// Перетекание содержимого: пилюля мягко гаснет, панель проявляется
+    /// и слегка «подплывает» на место. При сворачивании — наоборот.
+    /// </summary>
+    private void AnimateContentTransition(bool grow, TimeSpan duration)
     {
-        IslandClip.BeginAnimation(RectangleGeometry.RectProperty, null);
+        var compact = GetMotion(CompactPanel, 0.5);
+        var expanded = GetMotion(ExpandedPanel, 0.02);
+        var easeOut = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var easeIn = new CubicEase { EasingMode = EasingMode.EaseIn };
+        if (grow)
+        {
+            // Пилюля схлопывается и гаснет, панель проявляется уже к концу.
+            AnimateOpacity(CompactPanel, 1, 0, 0, 0.28, duration, easeIn);
+            AnimateScale(compact, 1, 0.86, 0, 0.28, duration, easeIn);
+            AnimateOpacity(ExpandedPanel, 0, 1, 0.3, 0.92, duration, easeOut);
+            AnimateScale(expanded, 0.99, 1, 0.3, 0.92, duration, easeOut);
+            AnimateTranslate(expanded, 14, 0, duration, easeOut);
+        }
+        else
+        {
+            AnimateOpacity(ExpandedPanel, 1, 0, 0, 0.3, duration, easeIn);
+            AnimateScale(expanded, 1, 0.98, 0, 0.3, duration, easeIn);
+            AnimateTranslate(expanded, 0, -10, duration, easeIn);
+            AnimateOpacity(CompactPanel, 0, 1, 0.55, 1, duration, easeOut);
+            AnimateScale(compact, 0.86, 1, 0.55, 1, duration, easeOut);
+        }
+    }
+
+    /// <summary>
+    /// Итоговое состояние содержимого после анимации: скрытая пилюля или
+    /// видимая панель без остаточных прозрачностей и смещений.
+    /// </summary>
+    private void ApplyContentState(bool expanded)
+    {
+        ResetMotion(CompactPanel);
+        ResetMotion(ExpandedPanel);
+        // Анимация прозрачности удерживает своё значение и после конца:
+        // без снятия она прятала бы пилюлю при следующем появлении.
+        CompactPanel.BeginAnimation(OpacityProperty, null);
         ExpandedPanel.BeginAnimation(OpacityProperty, null);
-        IslandClip.Rect = new Rect(0, 0, Width, Height);
+        CompactPanel.Opacity = expanded ? 0 : 1;
+        ExpandedPanel.Opacity = 1;
+        CompactPanel.Visibility = Visibility.Visible;
+        ExpandedPanel.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void SetWindowSize(double width, double height)
     {
         Width = width;
         Height = height;
-        IslandClip.Rect = new Rect(0, 0, width, height);
+        IslandBorder.Width = width;
+        IslandBorder.Height = height;
+        _visibleHeight = height;
+        UpdateIslandClip();
+    }
+
+    /// <summary>
+    /// Видимая область островка: клип по высоте и ширине окна. Анимация
+    /// высоты окна в WPF применяется неравномерно, поэтому раскрытие
+    /// выполняется через клип — он рисуется предсказуемо в каждом кадре.
+    /// </summary>
+    /// <summary>
+    /// Скруглённый контейнер островка сам задаёт видимую область: клип поверх
+    /// него срезал бы скруглённые углы при сворачивании.
+    /// </summary>
+    private void UpdateIslandClip()
+    {
+        IslandBorder.InvalidateMeasure();
     }
 
     private void Expand(string tab)
@@ -566,6 +934,7 @@ public partial class MainWindow : Window
         if (_closing) return;
         _collapseTimer.Stop();
         _toastTimer.Stop();
+        StopIslandAnimation();
         if (!_expanded)
         {
             var foreground = NativeMethods.GetForegroundWindow();
@@ -573,11 +942,12 @@ public partial class MainWindow : Window
         }
         _expanded = true;
         _expandedAt = DateTime.UtcNow;
+        InstallMouseHook();
         _peekVisible = false;
         _toastVisible = false;
         ToastPanel.Visibility = Visibility.Collapsed;
         ReminderPopup.Visibility = Visibility.Collapsed;
-        CompactPanel.Visibility = Visibility.Collapsed;
+        CompactPanel.Visibility = Visibility.Visible;
         ExpandedPanel.Visibility = Visibility.Visible;
         var monitor = GetTargetMonitor();
         var scale = GetMonitorScale(monitor.handle);
@@ -589,16 +959,14 @@ public partial class MainWindow : Window
         SelectTab(tab);
         if (!wasVisible)
         {
-            AnimateSize(targetWidth, targetHeight, 0);
+            // Островок появляется с нуля: показываем пилюлю и раскрываем её в панель.
+            SetWindowSize(Settings.IslandWidth, Settings.IslandHeight);
+            PositionWindow();
             Show();
             NativeMethods.AssertTopmost(_windowHandle);
-            AnimateIn(180);
+            AnimateIslandIn(ExpandDuration);
         }
-        else
-        {
-            AnimateSize(targetWidth, targetHeight, 240);
-            NativeMethods.AssertTopmost(_windowHandle);
-        }
+        AnimateSize(targetWidth, targetHeight, ExpandDuration, grow: true);
         _mediaTimer.Stop();
         if (_currentTab == "media" && Media.IsPlaying) _mediaTimer.Start();
     }
@@ -606,35 +974,37 @@ public partial class MainWindow : Window
     private void Collapse(bool animate = true)
     {
         if (_closing) return;
+        RemoveMouseHook();
         _expanded = false;
         _peekVisible = false;
         _toastVisible = false;
         _collapseTimer.Stop();
         _toastTimer.Stop();
         _mediaTimer.Stop();
-        ExpandedPanel.Visibility = Visibility.Collapsed;
         ToastPanel.Visibility = Visibility.Collapsed;
-        CompactPanel.Visibility = Visibility.Visible;
         if (_activeReminder is not null)
         {
             ReminderPopup.Visibility = Visibility.Visible;
-            AnimateSize(PopupWidth, PopupHeight, 180);
+            ExpandedPanel.Visibility = Visibility.Collapsed;
+            CompactPanel.Visibility = Visibility.Visible;
+            CompactPanel.Opacity = 0;
+            AnimateSize(PopupWidth, PopupHeight, ExpandDuration, grow: true, contentTransition: false);
             if (!IsVisible) Show();
             return;
         }
         if (!IsVisible) { PositionWindow(); return; }
-        if (!animate) { Hide(); PositionWindow(); TrimMemory(); return; }
-        AnimateOut(150, () =>
+        if (!animate)
         {
-            // A reminder or a toast can arrive during the collapse animation and
-            // re-show the window; hiding it here would leave the island invisible
-            // with an active reminder, which never clears on its own.
-            if (_activeReminder is not null || _expanded || _toastVisible || _peekVisible) return;
+            ApplyContentState(false);
             Hide();
-            SetWindowSize(Settings.IslandWidth, Settings.IslandHeight);
             PositionWindow();
             TrimMemory();
-        });
+            return;
+        }
+
+        // Островок просто уходит наверх: плавно, с тем же ускорением, что и
+        // уход пилюли при раскрытии. Окно прячется в последнем кадре.
+        AnimateCloseOut(CollapseDuration);
     }
 
     /// <summary>
@@ -730,28 +1100,78 @@ public partial class MainWindow : Window
         CompactPanel.Visibility = Visibility.Collapsed;
         ExpandedPanel.Visibility = Visibility.Collapsed;
         ToastPanel.Visibility = Visibility.Visible;
+        ToastPanel.Opacity = 0;
         var wasVisible = IsVisible;
-        PositionWindow();
-        AnimateSize(440, 126, wasVisible ? 180 : 0);
-        if (!IsVisible) Show();
+        if (!wasVisible)
+        {
+            SetWindowSize(440, 126);
+            PositionWindow();
+            Show();
+        }
         NativeMethods.AssertTopmost(_windowHandle);
-        if (!wasVisible) AnimateIn(180);
+        AnimateSize(440, 126, ToastDuration, grow: true, contentTransition: false);
+        AnimateToastIn(ToastDuration);
         _toastTimer.Interval = TimeSpan.FromSeconds(Settings.NotificationSeconds);
         _toastTimer.Stop();
         _toastTimer.Start();
+    }
+
+    /// <summary>
+    /// Напоминание тоже появляется мягко, а не «всплывает» мгновенно.
+    /// </summary>
+    private void AnimateReminderIn(int milliseconds)
+    {
+        ReminderPopup.BeginAnimation(OpacityProperty, null);
+        ReminderPopup.Opacity = 1;
+        if (milliseconds <= 0) return;
+        var duration = TimeSpan.FromMilliseconds(milliseconds);
+        ReminderPopup.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, duration)
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            FillBehavior = FillBehavior.HoldEnd
+        });
+    }
+
+    private void AnimateToastIn(int milliseconds)    {
+        ToastPanel.BeginAnimation(OpacityProperty, null);
+        ToastPanel.Opacity = 1;
+        if (milliseconds <= 0) return;
+        var duration = TimeSpan.FromMilliseconds(milliseconds);
+        ToastPanel.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, duration)
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            FillBehavior = FillBehavior.HoldEnd
+        });
     }
 
     private void SelectTab(string tab)
     {
         if (_closing) return;
         if (!_panelMap.TryGetValue(tab, out var selected)) tab = "home";
+        selected = _panelMap[tab];
         var changed = _currentTab != tab;
+        var previous = changed && _panelMap.TryGetValue(_currentTab, out var old) ? old : null;
         _currentTab = tab;
         HeaderContext.Text = "  /  " + (tab == "settings" ? "Настройки" : PanelCatalog.Title(tab));
-        foreach (var panel in _panels) panel.Visibility = Visibility.Collapsed;
-        selected = _panelMap[tab];
+        foreach (var panel in _panels)
+        {
+            if (panel == selected) continue;
+            if (panel != previous) panel.Visibility = Visibility.Collapsed;
+            Panel.SetZIndex(panel, 0);
+        }
+        Panel.SetZIndex(selected, 10);
         selected.Visibility = Visibility.Visible;
-        if (changed) AnimatePanelIn(selected);
+        if (changed)
+        {
+            AnimatePanelOut(previous);
+            AnimatePanelIn(selected);
+        }
+        else
+        {
+            ResetMotion(selected);
+            selected.Opacity = 1;
+        }
+        AnimateNavSelection(tab);
         if (tab != "ai" && SendButton.IsEnabled) AgentStatus.Text = "";
         if (tab == "media" && Media.IsPlaying) _mediaTimer.Start();
         else _mediaTimer.Stop();
@@ -778,32 +1198,152 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Мягкое появление панели при переключении: прозрачность и короткий подъём.
-    /// Трансформация создаётся один раз на панель, чтобы не мусорить в куче при
-    /// каждом переходе.
+    /// Мягкое появление панели при переключении: прозрачность, лёгкий
+    /// подъём и масштаб. Трансформация создаётся один раз на панель, чтобы
+    /// не мусорить в куче при каждом переходе.
     /// </summary>
     private void AnimatePanelIn(FrameworkElement panel)
     {
-        if (!_panelTransforms.TryGetValue(panel, out var transform))
-        {
-            transform = new TranslateTransform();
-            panel.RenderTransform = transform;
-            _panelTransforms[panel] = transform;
-        }
-        panel.BeginAnimation(OpacityProperty, null);
-        transform.BeginAnimation(TranslateTransform.YProperty, null);
-        panel.Opacity = 1;
-        transform.Y = 0;
-        if (!SystemParameters.ClientAreaAnimation) return;
+        var motion = GetMotion(panel, 0.02);
+        var duration = TimeSpan.FromMilliseconds(PanelSwapDuration);
         var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-        var duration = TimeSpan.FromMilliseconds(TickMilliseconds);
-        panel.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop });
-        transform.BeginAnimation(TranslateTransform.YProperty,
-            new DoubleAnimation(10, 0, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop });
+        AnimateOpacity(panel, 0, 1, 0, 1, duration, ease);
+        AnimateScale(motion, 0.985, 1, 0, 1, duration, ease);
+        AnimateTranslate(motion, 16, 0, duration, ease);
     }
 
-    private void Nav_Click(object sender, RoutedEventArgs e) => SelectTab((string)((Button)sender).Tag);
-    private void ShowNotifications_Click(object sender, RoutedEventArgs e) => SelectTab("notifications");
+    /// <summary>
+    /// Уходящая панель мягко растворяется, чтобы переход выглядел как
+    /// перетекание, а не как мгновенная подмена содержимого.
+    /// </summary>
+    private void AnimatePanelOut(FrameworkElement? panel)
+    {
+        if (panel is null) return;
+        var motion = GetMotion(panel, 0.02);
+        var duration = TimeSpan.FromMilliseconds(PanelFadeDuration);
+        var ease = new CubicEase { EasingMode = EasingMode.EaseIn };
+        AnimateOpacity(panel, 1, 0, 0, 1, duration, ease, () =>
+        {
+            if (_panelMap.TryGetValue(_currentTab, out var current) && current == panel) return;
+            panel.Visibility = Visibility.Collapsed;
+        });
+        AnimateScale(motion, 1, 0.99, 0, 1, duration, ease);
+        AnimateTranslate(motion, 0, -12, duration, ease);
+    }
+
+    /// <summary>
+    /// Возвращает (и при необходимости создаёт) трансформацию элемента.
+    /// Создаётся один раз на элемент, чтобы не плодить объекты при переходах.
+    /// </summary>
+    private Motion GetMotion(FrameworkElement element, double originY)
+    {
+        if (!_motions.TryGetValue(element, out var motion))
+        {
+            motion = new Motion();
+            element.RenderTransform = motion.Group;
+            _motions[element] = motion;
+        }
+        element.RenderTransformOrigin = new Point(0.5, originY);
+        return motion;
+    }
+
+    private void ResetMotion(FrameworkElement element)
+    {
+        if (!_motions.TryGetValue(element, out var motion)) return;
+        motion.Scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        motion.Scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        motion.Translate.BeginAnimation(TranslateTransform.YProperty, null);
+        motion.Scale.ScaleX = 1;
+        motion.Scale.ScaleY = 1;
+        motion.Translate.Y = 0;
+    }
+
+    private void AnimateOpacity(FrameworkElement element, double from, double to, double start, double end, TimeSpan duration, IEasingFunction ease, Action? completed = null)
+    {
+        element.BeginAnimation(OpacityProperty, null);
+        element.Opacity = to;
+        if (duration <= TimeSpan.Zero)
+        {
+            completed?.Invoke();
+            return;
+        }
+        var frames = new DoubleAnimationUsingKeyFrames { Duration = duration };
+        frames.KeyFrames.Add(new LinearDoubleKeyFrame(from, KeyTime.FromPercent(start)));
+        frames.KeyFrames.Add(new EasingDoubleKeyFrame(to, KeyTime.FromPercent(Math.Clamp(end, start + 0.01, 1))) { EasingFunction = ease });
+        if (completed is not null) frames.Completed += (_, _) => completed();
+        element.BeginAnimation(OpacityProperty, frames);
+    }
+
+    private void AnimateScale(Motion motion, double from, double to, double start, double end, TimeSpan duration, IEasingFunction ease)
+    {
+        foreach (var property in new[] { ScaleTransform.ScaleXProperty, ScaleTransform.ScaleYProperty })
+        {
+            motion.Scale.BeginAnimation(property, null);
+        }
+        motion.Scale.ScaleX = to;
+        motion.Scale.ScaleY = to;
+        if (duration <= TimeSpan.Zero) return;
+        foreach (var property in new[] { ScaleTransform.ScaleXProperty, ScaleTransform.ScaleYProperty })
+        {
+            var frames = new DoubleAnimationUsingKeyFrames { Duration = duration };
+            frames.KeyFrames.Add(new LinearDoubleKeyFrame(from, KeyTime.FromPercent(start)));
+            frames.KeyFrames.Add(new EasingDoubleKeyFrame(to, KeyTime.FromPercent(Math.Clamp(end, start + 0.01, 1))) { EasingFunction = ease });
+            motion.Scale.BeginAnimation(property, frames);
+        }
+    }
+
+    private void AnimateTranslate(Motion motion, double from, double to, TimeSpan duration, IEasingFunction ease)
+    {
+        motion.Translate.BeginAnimation(TranslateTransform.YProperty, null);
+        motion.Translate.Y = to;
+        if (duration <= TimeSpan.Zero) return;
+        motion.Translate.BeginAnimation(TranslateTransform.YProperty,
+            new DoubleAnimation(from, to, duration) { EasingFunction = ease, FillBehavior = FillBehavior.HoldEnd });
+    }
+
+    /// <summary>
+    /// Пока панель раскрыта, ловим клики мыши: клик вне островка закрывает
+    /// его, как у всплывающих окон. Хук ставится только на время раскрытия,
+    /// в фоне он не висит.
+    /// </summary>
+    private void InstallMouseHook()
+    {
+        if (_mouseHook != IntPtr.Zero) return;
+        _mouseHook = NativeMethods.SetWindowsHookEx(WhMouseLowLevel, _mouseProc, NativeMethods.GetModuleHandle(null), 0);
+        if (_mouseHook == IntPtr.Zero) Diagnostics.Log("mouse hook failed: " + Marshal.GetLastWin32Error());
+    }
+
+    private void RemoveMouseHook()
+    {
+        if (_mouseHook == IntPtr.Zero) return;
+        NativeMethods.UnhookWindowsHookEx(_mouseHook);
+        _mouseHook = IntPtr.Zero;
+    }
+
+    private static IntPtr MouseHookProc(int code, IntPtr wParam, IntPtr lParam)
+    {
+        if (code >= 0 && wParam.ToInt32() == WmLeftButtonDown)
+        {
+            var data = Marshal.PtrToStructure<NativeMethods.MouseHookStruct>(lParam);
+            var window = Application.Current?.MainWindow as MainWindow;
+            window?.Dispatcher.BeginInvoke(() =>
+            {
+                if (window is null || !window._expanded || window._closing) return;
+                if (window.IsPointInsideIsland(data.Point)) return;
+                window.Collapse();
+            });
+        }
+        return NativeMethods.CallNextHookEx(IntPtr.Zero, code, wParam, lParam);
+    }
+
+    private bool IsPointInsideIsland(NativeMethods.Point point)
+    {
+        if (_windowHandle == IntPtr.Zero) return false;
+        if (!NativeMethods.GetWindowRect(_windowHandle, out var rect)) return false;
+        return point.X >= rect.Left && point.X <= rect.Right && point.Y >= rect.Top && point.Y <= rect.Bottom;
+    }
+
+    private void Nav_Click(object sender, RoutedEventArgs e) => SelectTab((string)((Button)sender).Tag);    private void ShowNotifications_Click(object sender, RoutedEventArgs e) => SelectTab("notifications");
     private void CompactMedia_Click(object sender, RoutedEventArgs e) { Expand("media"); e.Handled = true; }
     private void Compact_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -1518,7 +2058,10 @@ public partial class MainWindow : Window
             list.Add(item);
         }
         var accent = (Brush)Application.Current.Resources["AccentBrush"];
-        var todayBrush = new SolidColorBrush(Color.FromArgb(60, 0x8B, 0x7C, 0xFF));
+        var onAccent = (Brush)Application.Current.Resources["OnAccentBrush"];
+        var text = (Brush)Application.Current.Resources["TextBrush"];
+        var accentColor = (Application.Current.Resources["AccentBrush"] as SolidColorBrush)?.Color ?? Colors.MediumPurple;
+        var todayBrush = new SolidColorBrush(Color.FromArgb(60, accentColor.R, accentColor.G, accentColor.B));
         todayBrush.Freeze();
         CalendarDays.Clear();
         for (var i = 0; i < 42; i++)
@@ -1531,7 +2074,7 @@ public partial class MainWindow : Window
                 HasItems = items is { Count: > 0 },
                 Opacity = date.Month == _calendarMonth.Month ? 1 : 0.32,
                 Background = date == _selectedDay ? accent : date == DateTime.Today ? todayBrush : Brushes.Transparent,
-                Foreground = date == _selectedDay ? Brushes.White : date == DateTime.Today ? accent : Brushes.White,
+                Foreground = date == _selectedDay ? onAccent : date == DateTime.Today ? accent : text,
                 ToolTip = items is { Count: > 0 }
                     ? string.Join("\n", items.OrderBy(x => x.Start).Select(x => $"{x.Start:HH:mm}  {x.Title}"))
                     : date.ToString("dd MMMM yyyy")
@@ -1762,7 +2305,9 @@ public partial class MainWindow : Window
         var offset = ((int)_pickerMonth.DayOfWeek + 6) % 7;
         var start = _pickerMonth.AddDays(-offset);
         var accent = (Brush)Application.Current.Resources["AccentBrush"];
-        var todayBrush = new SolidColorBrush(Color.FromArgb(48, 0xFF, 0xFF, 0xFF));
+        var onAccent = (Brush)Application.Current.Resources["OnAccentBrush"];
+        var text = (Brush)Application.Current.Resources["TextBrush"];
+        var todayBrush = new SolidColorBrush(Color.FromArgb(48, 255, 255, 255));
         todayBrush.Freeze();
         _pickerDays.Clear();
         for (var i = 0; i < 42; i++)
@@ -1774,7 +2319,7 @@ public partial class MainWindow : Window
                 HasItems = false,
                 Opacity = date.Month == _pickerMonth.Month ? 1 : 0.3,
                 Background = date == _reminderDate.Date ? accent : date == DateTime.Today ? todayBrush : Brushes.Transparent,
-                Foreground = date == _reminderDate.Date ? Brushes.White : Brushes.White,
+                Foreground = date == _reminderDate.Date ? onAccent : text,
                 ToolTip = date.ToString("dd MMMM yyyy")
             });
         }
@@ -1869,11 +2414,16 @@ public partial class MainWindow : Window
         CompactPanel.Visibility = Visibility.Collapsed;
         ReminderPopup.Visibility = Visibility.Visible;
         var wasVisible = IsVisible;
-        PositionWindow();
-        AnimateSize(PopupWidth, PopupHeight, wasVisible ? 180 : 0);
-        if (!IsVisible) Show();
+        if (!wasVisible)
+        {
+            SetWindowSize(PopupWidth, PopupHeight);
+            PositionWindow();
+            Show();
+        }
         NativeMethods.AssertTopmost(_windowHandle);
-        if (!wasVisible) AnimateIn(180);
+        AnimateSize(PopupWidth, PopupHeight, ExpandDuration, grow: false, contentTransition: false);
+        if (!wasVisible) AnimateIslandIn(ExpandDuration);
+        AnimateReminderIn(ExpandDuration);
         PlayReminderSound();
         RenderReminders();
     }
@@ -2041,6 +2591,7 @@ public partial class MainWindow : Window
         if (((Button)sender).Tag is not ClipboardItem item) return;
         try { Clipboard.SetText(item.Text); } catch { return; }
         Collapse();
+        RemoveMouseHook();
         if (_previousForeground != IntPtr.Zero) NativeMethods.SetForegroundWindow(_previousForeground);
         await Task.Delay(180);
         NativeMethods.SendPaste();
@@ -2228,19 +2779,29 @@ public partial class MainWindow : Window
 
     private void ApplyAppearance()
     {
-        try
+        var themeKey = $"{Settings.BackgroundColor}|{Settings.ForegroundColor}|{Settings.Accent}";
+        var themeChanged = themeKey != _appliedThemeKey;
+        var valid = ThemeService.Apply(Settings, out _);
+        if (valid)
         {
-            var color = (Color)ColorConverter.ConvertFromString(Settings.Accent);
-            var brush = new SolidColorBrush(color);
-            brush.Freeze();
-            Application.Current.Resources["AccentBrush"] = brush;
+            _lastValidBackground = Settings.BackgroundColor;
+            _lastValidForeground = Settings.ForegroundColor;
+            _lastValidAccent = Settings.Accent;
         }
-        catch { }
+        if (themeChanged)
+        {
+            _appliedThemeKey = themeKey;
+            // Календарь и пикер берут цвета из ресурсов — перерисовываем их под новую тему.
+            RenderCalendar();
+            RenderPicker();
+        }
+        UpdateSwatchSelection();
+        UpdateNavColors(animate: false);
         IslandBorder.CornerRadius = new CornerRadius(0, 0, Settings.CornerRadius, Settings.CornerRadius);
-        IslandClip.Rect = new Rect(0, 0, Width, Height);
+        IslandBorder.Opacity = 1;
         if (_activeReminder is not null)
         {
-            AnimateSize(PopupWidth, PopupHeight, 0);
+            AnimateSize(PopupWidth, PopupHeight, 0, grow: false, contentTransition: false);
             return;
         }
         if (_expanded)
@@ -2249,19 +2810,37 @@ public partial class MainWindow : Window
             var scale = GetMonitorScale(monitor.handle);
             AnimateSize(
                 Math.Min(Settings.ExpandedWidth, (monitor.info.Work.Right - monitor.info.Work.Left) / scale - 20),
-                Math.Min(Settings.ExpandedHeight, (monitor.info.Work.Bottom - monitor.info.Work.Top) / scale - 12), 0);
+                Math.Min(Settings.ExpandedHeight, (monitor.info.Work.Bottom - monitor.info.Work.Top) / scale - 12),
+                0, grow: true);
             return;
         }
         if (_toastVisible)
         {
-            AnimateSize(440, 126, 0);
+            AnimateSize(440, 126, 0, grow: false, contentTransition: false);
             return;
         }
-        AnimateSize(Settings.IslandWidth, Settings.IslandHeight, 0);
-        if (IsVisible) AnimateIn(0);
+        AnimateSize(Settings.IslandWidth, Settings.IslandHeight, 0, grow: false);
+        if (IsVisible) AnimateIslandIn(0);
     }
 
-    private void Accent_Click(object sender, RoutedEventArgs e) => Settings.Accent = (string)((Button)sender).Tag;
+    /// <summary>
+    /// Готовые темы задают фон и цвет текста разом, акцент остаётся прежним.
+    /// </summary>
+    private void DarkTheme_Click(object sender, RoutedEventArgs e) => ApplyTheme("#141419", "#F5F5F7");
+
+    private void LightTheme_Click(object sender, RoutedEventArgs e) => ApplyTheme("#F2F2F5", "#1A1A1F");
+
+    private void ApplyTheme(string background, string foreground)
+    {
+        Settings.BackgroundColor = background;
+        Settings.ForegroundColor = foreground;
+        if (Settings.Opacity > 0.95) Settings.Opacity = 1;
+    }
+
+    private void Accent_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is string hex) Settings.Accent = hex;
+    }
 
     private void ScreenMode_Changed(object sender, SelectionChangedEventArgs e)
     {

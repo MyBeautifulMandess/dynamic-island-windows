@@ -10,6 +10,8 @@ public sealed class AppSettings : ObservableObject
     private double _opacity = 0.96;
     private double _horizontalOffset;
     private string _accent = "#8B7CFF";
+    private string _backgroundColor = "#141419";
+    private string _foregroundColor = "#F5F5F7";
     private string _screenMode = "cursor";
     private bool _hotCornerEnabled = true;
     private bool _launchAtStartup;
@@ -38,9 +40,11 @@ public sealed class AppSettings : ObservableObject
     public double ExpandedWidth { get => _expandedWidth; set => Set(ref _expandedWidth, Math.Clamp(value, 640, 1100)); }
     public double ExpandedHeight { get => _expandedHeight; set => Set(ref _expandedHeight, Math.Clamp(value, 420, 700)); }
     public double CornerRadius { get => _cornerRadius; set => Set(ref _cornerRadius, Math.Clamp(value, 8, 30)); }
-    public double Opacity { get => _opacity; set => Set(ref _opacity, Math.Clamp(value, 0.7, 1)); }
+    public double Opacity { get => _opacity; set => Set(ref _opacity, Math.Clamp(value, 0.4, 1)); }
     public double HorizontalOffset { get => _horizontalOffset; set => Set(ref _horizontalOffset, Math.Clamp(value, -500, 500)); }
     public string Accent { get => _accent; set => Set(ref _accent, value); }
+    public string BackgroundColor { get => _backgroundColor; set => Set(ref _backgroundColor, value); }
+    public string ForegroundColor { get => _foregroundColor; set => Set(ref _foregroundColor, value); }
     public string ScreenMode { get => _screenMode; set => Set(ref _screenMode, value); }
     public bool HotCornerEnabled { get => _hotCornerEnabled; set => Set(ref _hotCornerEnabled, value); }
     public bool LaunchAtStartup { get => _launchAtStartup; set => Set(ref _launchAtStartup, value); }

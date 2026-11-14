@@ -106,10 +106,13 @@ public sealed class TimeSlot : ObservableObject
     public string Text => $"{Time:hh\\:mm}";
     public bool IsSelected { get => _isSelected; set { if (Set(ref _isSelected, value)) { Notify(nameof(Background)); Notify(nameof(Foreground)); } } }
     public Brush Background => IsSelected ? AccentBrushValue : Brushes.Transparent;
-    public Brush Foreground => IsSelected ? Brushes.White : TextBrushValue;
+    public Brush Foreground => IsSelected ? OnAccentBrushValue : TextBrushValue;
 
     private static Brush AccentBrushValue =>
         System.Windows.Application.Current?.Resources["AccentBrush"] as Brush ?? Brushes.Transparent;
+
+    private static Brush OnAccentBrushValue =>
+        System.Windows.Application.Current?.Resources["OnAccentBrush"] as Brush ?? Brushes.White;
 
     private static Brush TextBrushValue =>
         System.Windows.Application.Current?.Resources["TextBrush"] as Brush ?? Brushes.White;
