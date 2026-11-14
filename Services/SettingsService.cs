@@ -32,11 +32,31 @@ public sealed class SettingsService
                     settings.AiBaseUrl = "https://routerai.ru/api/v1";
                     settings.AiProvider = "RouterAI";
                 }
+                if (Migrate(settings)) Save(settings);
                 return settings;
             }
         }
         catch { }
         return new AppSettings();
+    }
+
+    /// <summary>
+    /// Приведение старых настроек к нынешнему поведению. До ревизии 2 автозакрытие
+    /// порта было включено по умолчанию, и у всех, кто хоть раз сохранил
+    /// настройки, оно осталось включённым — телефон приходил на закрытый порт,
+    /// и связь «то есть, то нет». Выключаем один раз; дальше решает пользователь.
+    /// Возвращает true, если файл нужно перезаписать.
+    /// </summary>
+    private static bool Migrate(AppSettings settings)
+    {
+        if (settings.SettingsRevision >= AppSettings.CurrentRevision)
+        {
+            settings.SettingsRevision = AppSettings.CurrentRevision;
+            return false;
+        }
+        settings.Phone.IdleShutdown = false;
+        settings.SettingsRevision = AppSettings.CurrentRevision;
+        return true;
     }
 
     public void Save(AppSettings settings)

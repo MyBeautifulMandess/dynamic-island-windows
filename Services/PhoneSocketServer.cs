@@ -23,27 +23,26 @@ internal sealed class PhoneSocketServer : IDisposable
     private const int MaxTextBytes = 256 * 1024;
     private static readonly byte[] AcceptGuid = Encoding.ASCII.GetBytes("258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
 
-    private readonly int _port;
     private readonly string _path;
+    private int _port;
     private TcpListener? _listener;
     private CancellationTokenSource? _cts;
     private bool _disposed;
 
     public event Action<PhoneSocketConnection>? Connected;
-    public event Action<PhoneSocketConnection>? Disconnected;
 
-    public PhoneSocketServer(int port, string path = "/di/")
+    public PhoneSocketServer(string path = "/di/")
     {
-        _port = port;
         _path = path;
     }
 
     public bool IsRunning => _listener is not null;
 
-    public void Start()
+    public void Start(int port)
     {
         if (_disposed || _listener is not null) return;
-        var listener = new TcpListener(IPAddress.Any, _port);
+        _port = port;
+        var listener = new TcpListener(IPAddress.Any, port);
         listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
         listener.Start();
         _listener = listener;
@@ -94,12 +93,14 @@ internal sealed class PhoneSocketServer : IDisposable
                     var ip = values.GetValueOrDefault("ip") ?? "";
                     var port = int.TryParse(values.GetValueOrDefault("port"), out var parsedPort) ? parsedPort : 0;
                     var pairToken = values.GetValueOrDefault("token") ?? "";
+                    var btAddress = values.GetValueOrDefault("bta") ?? "";
                     if (ip.Length == 0 || port is <= 0 or > 65535 || pairToken.Length == 0)
                     {
                         await WriteHttpAsync(stream, "400 Bad Request", "Invalid pairing data", "text/plain; charset=utf-8");
                         return;
                     }
-                    await WriteHttpAsync(stream, "200 OK", PhonePairingPage.BuildHtml(ip, port, pairToken), "text/html; charset=utf-8");
+                    await WriteHttpAsync(stream, "200 OK",
+                        PhonePairingPage.BuildHtml(ip, port, pairToken, btAddress), "text/html; charset=utf-8");
                     return;
                 }
 
@@ -142,11 +143,9 @@ internal sealed class PhoneSocketServer : IDisposable
         }
         finally
         {
-            if (connection is not null)
-            {
-                Disconnected?.Invoke(connection);
-                connection.Dispose();
-            }
+            // Канал сам сообщает о закрытии событием Closed: второй сигнал
+            // о том же соединении только задвоил бы изменения в интерфейсе.
+            connection?.Dispose();
             try { client.Dispose(); } catch { }
         }
     }
@@ -232,7 +231,7 @@ internal sealed class PhoneSocketServer : IDisposable
 }
 
 /// <summary>Одно принятое TCP-соединение с телефоном. Кадры — текстовые (JSON) и бинарные (файлы).</summary>
-internal sealed class PhoneSocketConnection : IDisposable
+internal sealed class PhoneSocketConnection : IPhoneChannel
 {
     private const int MaxFrameBytes = 1024 * 1024;
     private const int MaxTextBytes = 256 * 1024;
@@ -253,14 +252,18 @@ internal sealed class PhoneSocketConnection : IDisposable
     }
 
     public string Remote { get; }
+    public string Transport => "Wi-Fi";
     public string? DeviceId { get; set; }
+
+    /// <summary>По TCP аппаратный адрес телефона неизвестен: остаётся идентификатор установки.</summary>
+    public string HardwareAddress => "";
+
     public DateTime LastPongUtc { get; set; } = DateTime.UtcNow;
     public bool IsAuthenticated => DeviceId is not null;
 
-    public event Action<PhoneSocketConnection, string>? TextReceived;
-    public event Action<PhoneSocketConnection, byte[]>? BinaryReceived;
-    public event Action<PhoneSocketConnection>? PongReceived;
-    public event Action<PhoneSocketConnection>? Closed;
+    public event Action<IPhoneChannel, string>? TextReceived;
+    public event Action<IPhoneChannel, byte[]>? BinaryReceived;
+    public event Action<IPhoneChannel>? Closed;
 
     public async Task ReadLoopAsync(CancellationToken token)
     {
@@ -343,7 +346,6 @@ internal sealed class PhoneSocketConnection : IDisposable
                         break;
                     case 0xA:
                         LastPongUtc = DateTime.UtcNow;
-                        PongReceived?.Invoke(this);
                         break;
                 }
             }

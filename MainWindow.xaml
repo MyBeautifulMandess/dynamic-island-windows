@@ -844,8 +844,10 @@
                                     <Border Style="{StaticResource Card}" Margin="0,0,0,8">
                                         <StackPanel>
                                             <TextBlock Text="Телефон" Style="{StaticResource SectionTitle}" />
-                                            <TextBlock Text="Связь с Android-телефоном по Wi-Fi. Только локальная сеть, без облака." Style="{StaticResource SectionHint}" />
+                                            <TextBlock Text="Связь с Android-телефоном по Wi-Fi или Bluetooth. Только локально, без облака." Style="{StaticResource SectionHint}" />
                                             <CheckBox x:Name="PhoneEnabledCheck" Content="Связь с телефоном" IsChecked="{Binding Settings.Phone.Enabled, Mode=TwoWay}" />
+                                            <CheckBox Content="Bluetooth-канал (работает без общей Wi-Fi)" IsChecked="{Binding Settings.Phone.Bluetooth, Mode=TwoWay}" Margin="0,0,0,4"
+                                                      ToolTip="Связь поверх системного сопряжения Windows и Android. Медленнее Wi-Fi, но не требует одной сети." />
                                             <CheckBox Content="Синхронизация буфера обмена" IsChecked="{Binding Settings.Phone.ClipboardSync, Mode=TwoWay}" />
                                             <CheckBox Content="Показывать текст с телефона карточкой" IsChecked="{Binding Settings.Phone.ClipboardPreview, Mode=TwoWay}" Margin="20,0,0,6" FontSize="11.5" />
                                             <CheckBox Content="Уведомления телефона" IsChecked="{Binding Settings.Phone.Notifications, Mode=TwoWay}" />
@@ -863,15 +865,16 @@
                                                 <TextBox Grid.Column="1" Text="{Binding Settings.Phone.IgnoredApps, Mode=TwoWay}" AcceptsReturn="False"
                                                          ToolTip="Пакеты Android через запятую, например com.example.app, org.telegram.messenger" />
                                             </Grid>
-                                            <CheckBox Content="Закрывать порт без телефона" IsChecked="{Binding Settings.Phone.IdleShutdown, Mode=TwoWay}" Margin="0,8,0,0" />
+                                            <CheckBox Content="Закрывать порт без телефона" IsChecked="{Binding Settings.Phone.IdleShutdown, Mode=TwoWay}" Margin="0,8,0,0"
+                                                      ToolTip="Порт закрывается, если телефон не подключался дольше указанного времени. Bluetooth-канал при этом продолжает работать." />
                                             <Grid Margin="0,6,0,0">
                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                                 <TextBlock Text="Простой, мин" Style="{StaticResource RowLabel}" />
                                                 <TextBox Grid.Column="1" Text="{Binding Settings.Phone.IdleMinutes, Mode=TwoWay}"
                                                          ToolTip="Сколько минут без подключений держать порт открытым. 1–240" />
                                             </Grid>
-                                            <TextBlock Text="Пока телефон не подключён, порт остаётся открытым только это время. Затем сервер закрывается и открывается снова по кнопке «Подключить телефон»."
-                                                       Style="{StaticResource SectionHint}" Margin="0,4,0,0" />
+                                            <TextBlock Text="Порт нужен только для связи по Wi-Fi: без него телефон доходит по Bluetooth. Автозакрытие выключено по умолчанию — закрытый порт и был причиной «связь то есть, то нет». Bluetooth-канал работает всегда, пока включён переключатель выше."
+                                                       Style="{StaticResource SectionHint}" Margin="0,4,0,0" TextWrapping="Wrap" />
                                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                                 <Button Content="Подключить телефон" Click="ConnectPhone_Click" FontSize="12" />
                                                 <Button Content="Панель телефона" Click="ShowPhonePanel_Click" Margin="6,0,0,0" FontSize="12" />

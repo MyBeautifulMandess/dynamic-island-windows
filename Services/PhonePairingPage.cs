@@ -17,15 +17,20 @@ internal static class PhonePairingPage
     /// <summary>Путь страницы сопряжения на локальном сервере.</summary>
     public const string Path = "/di/pair";
 
-    public static string BuildHtml(string address, int port, string token)
+    public static string BuildHtml(string address, int port, string token, string bluetoothAddress = "")
     {
-        var deepLink = $"dilink://v1?ip={Uri.EscapeDataString(address)}&port={port}&token={Uri.EscapeDataString(token)}";
+        var bluetooth = PhoneBluetoothServer.NormalizeAddress(bluetoothAddress);
+        var btQuery = bluetooth.Length > 0 ? $"&bta={Uri.EscapeDataString(bluetooth)}" : "";
+        var deepLink = $"dilink://v1?ip={Uri.EscapeDataString(address)}&port={port}&token={Uri.EscapeDataString(token)}{btQuery}";
         var escapedDeepLink = Html(deepLink);
         var escapedAddress = Html($"{address}:{port}");
         var escapedToken = Html(token);
         var shortened = token.Length > 12 ? token[..6] + "…" + token[^4..] : token;
         var escapedShort = Html(shortened);
         var scriptLink = Js(deepLink);
+        var btRow = bluetooth.Length > 0
+            ? $"\n      <div class=\"row\"><span>Bluetooth</span><b>{Html(bluetooth)}</b></div>"
+            : "";
 
         return $$"""
 <!DOCTYPE html>
@@ -77,7 +82,7 @@ internal static class PhonePairingPage
       Установить DI Link можно из репозитория проекта.</p>
     <div class="rows">
       <div class="row"><span>Адрес</span><b>{{escapedAddress}}</b></div>
-      <div class="row"><span>Ключ</span><b title="{{escapedToken}}">{{escapedShort}}</b></div>
+      <div class="row"><span>Ключ</span><b title="{{escapedToken}}">{{escapedShort}}</b></div>{{btRow}}
     </div>
   </div>
 <script>

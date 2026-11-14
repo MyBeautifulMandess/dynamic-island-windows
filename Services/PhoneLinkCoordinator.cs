@@ -55,10 +55,16 @@ public sealed class PhoneLinkCoordinator : IDisposable
         _link.IdleClosed += () => StateChanged?.Invoke();
         _link.IdleShutdownEnabled = settings.IdleShutdown;
         _link.IdleTimeout = TimeSpan.FromMinutes(settings.IdleMinutes);
+        _link.Configure(settings.Bluetooth, settings.IdleShutdown, TimeSpan.FromMinutes(settings.IdleMinutes));
         if (settings.Enabled) Start(settings.Port);
     }
 
     public void Start(int port) => _link.Start(port);
+
+    /// <summary>Ключ сопряжения и адреса для QR-кода: сеть и Bluetooth.</summary>
+    public string BluetoothAddress => _link.BluetoothAddress;
+
+    public bool BluetoothRunning => _link.IsBluetoothRunning;
 
     public void Stop() => _link.Stop();
 

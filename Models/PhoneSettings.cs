@@ -35,17 +35,26 @@ public sealed class PhoneLinkSettings : ObservableObject
     /// <summary>Куда складывать файлы с телефона. Пусто — папка «Загрузки».</summary>
     public string PcDownloadFolder { get => _pcDownloadFolder; set => Set(ref _pcDownloadFolder, value); }
 
-    private bool _idleShutdown = true;
+    private bool _idleShutdown;
     private int _idleMinutes = 15;
+    private bool _bluetooth = true;
 
     /// <summary>
     /// Закрывать порт, когда телефон не подключён дольше указанного времени.
-    /// Порт перестаёт слушаться, а нулевой запрос из сети не получит даже ответа.
+    /// По умолчанию выключено: закрытый порт — главная причина «связь то есть,
+    /// то нет», потому что телефон приходил на уже закрытый адрес. Bluetooth
+    /// при этом работает всё равно — он живёт вне порта.
     /// </summary>
     public bool IdleShutdown { get => _idleShutdown; set => Set(ref _idleShutdown, value); }
 
     /// <summary>Сколько минут без телефона держать порт открытым. 1–240.</summary>
     public int IdleMinutes { get => _idleMinutes; set => Set(ref _idleMinutes, Math.Clamp(value, 1, 240)); }
+
+    /// <summary>
+    /// Второй транспорт — Bluetooth. Нужен, когда компьютер и телефон не в одной
+    /// Wi-Fi сети: канал идёт поверх системного сопряжения Windows и Android.
+    /// </summary>
+    public bool Bluetooth { get => _bluetooth; set => Set(ref _bluetooth, value); }
 
     public string[] IgnoredAppList => IgnoredApps
         .Split(['\n', '\r', ',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

@@ -68,4 +68,12 @@ public sealed class AppSettings : ObservableObject
     public string AiKey { get => _aiKey; set => Set(ref _aiKey, value); }
     public string AiModel { get => _aiModel; set => Set(ref _aiModel, value); }
     public PhoneLinkSettings Phone { get; set; } = new();
+
+    /// <summary>
+    /// Ревизия файла настроек. По ней видно, какие значения пришли от старой
+    /// версии и требуют пересмотра при загрузке.
+    /// </summary>
+    public int SettingsRevision { get; set; }
+
+    public const int CurrentRevision = 2;
 }

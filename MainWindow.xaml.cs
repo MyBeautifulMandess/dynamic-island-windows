@@ -149,6 +149,7 @@ public partial class MainWindow : Window
         BuildColorSwatches();
         _quickFiles = new QuickFilesService(() => Settings.QuickFolder);
         _phone = new PhoneLinkCoordinator(_clipboard, _downloads.DownloadsPath) { SettingsProvider = () => Settings.Phone };
+        _phone.Link.PairingApprover = AskPairing;
         _phoneNotifications = _phone.Notifications;
         _notificationCenter = new NotificationCenter(_notifications, _phoneNotifications);
         DataContext = this;
@@ -1514,6 +1515,47 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    /// <summary>
+    /// Подтверждение, когда телефон нашёл компьютер сам — так же, как в Quick
+    /// Share и в связи с телефоном у Windows: рядом появилось устройство,
+    /// человек нажал «да», и пошёл обмен.
+    /// </summary>
+    private bool AskPairing(string name, string transport)
+    {
+        var device = string.IsNullOrWhiteSpace(name) ? "Телефон" : name;
+        Diagnostics.Log($"Сопряжение: запрос от «{device}» ({transport})");
+        var approved = false;
+        var failed = false;
+        // Диалог показываем в отдельном потоке с STA: так он не блокирует
+        // островок, пока пользователь решает, что нажать.
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var answer = MessageBox.Show(
+                    $"«{device}» просит сопряжение через {transport}.\nРазрешить подключение?",
+                    "Dynamic Island — сопряжение",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+                approved = answer == MessageBoxResult.Yes;
+            }
+            catch (Exception ex)
+            {
+                failed = true;
+                Diagnostics.Log("Сопряжение: подтверждение не показалось — " + ex.Message);
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.IsBackground = true;
+        thread.Start();
+        thread.Join();
+        if (failed) return false;
+        Diagnostics.Log(approved
+            ? $"Сопряжение: «{device}» разрешено"
+            : $"Сопряжение: «{device}» отклонено");
+        return approved;
+    }
+
     private void ConnectPhone_Click(object sender, RoutedEventArgs e)
     {
         if (!Settings.Phone.Enabled)
@@ -1531,7 +1573,11 @@ public partial class MainWindow : Window
         var code = _phone.CreatePairingCode();
         ShowQr(code.WebUrl);
         PhoneStatus.Text = $"Покажите QR телефону. Адрес {code.Address}:{code.Port}, код действует 10 минут. " +
-                           "Камера откроет страницу в браузере, а та запустит DI Link.";
+                           "Камера откроет страницу в браузере, а та запустит DI Link. " +
+                           "Если общей сети нет, на телефоне выберите «Найти компьютер» — связь пойдёт по Bluetooth." +
+                           (code.HasBluetooth
+                               ? $" Bluetooth компьютера: {code.BluetoothAddress}."
+                               : " Bluetooth-адаптер компьютера недоступен.");
     }
 
     private void ShowQr(string text)
@@ -1582,8 +1628,11 @@ public partial class MainWindow : Window
             var address = values.TryGetValue("ip", out var ip) ? ip : "?";
             var port = values.TryGetValue("port", out var pt) ? pt : "?";
             var token = values.TryGetValue("token", out var tk) ? tk : "";
+            var bluetooth = values.TryGetValue("bta", out var bt) ? Uri.UnescapeDataString(bt) : "";
 
-            ManualAddressText.Text = $"Адрес: {address}:{port}";
+            ManualAddressText.Text = string.IsNullOrEmpty(bluetooth)
+                ? $"Адрес: {address}:{port}"
+                : $"Адрес: {address}:{port}  ·  Bluetooth: {bluetooth}";
             ManualTokenText.Text = $"Ключ: {token}";
             ManualUrlText.Text = $"Ссылка: {url}";
             ManualPairBlock.Visibility = Visibility.Visible;
@@ -1638,13 +1687,19 @@ public partial class MainWindow : Window
         PairedDevicesList.Visibility = PairedDevices.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         NoDevicesText.Visibility = PairedDevices.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
         var connected = _phone.Link.HasConnections;
+        var transport = _phone.Link.ActiveTransport;
         PhoneStateText.Text = !Settings.Phone.Enabled
             ? "Связь с телефоном выключена"
-            : connected ? "Телефон подключён"
+            : connected ? $"Телефон подключён · {transport}"
             : _phone.IsRunning ? "Ожидание телефона" : "Порт закрыт — нажмите «Подключить»";
         PhoneStateDot.Fill = (Brush)Application.Current.Resources[connected ? "AccentBrush" : "MutedBrush"];
+        var bluetooth = !Settings.Phone.Bluetooth
+            ? "Bluetooth выключен"
+            : !string.IsNullOrEmpty(_phone.BluetoothAddress)
+                ? $"Bluetooth {_phone.BluetoothAddress}"
+                : "Bluetooth недоступен";
         PhoneServerText.Text = Settings.Phone.Enabled
-            ? $"{_phone.Status}  ·  порт {Settings.Phone.Port}"
+            ? $"{_phone.Status}  ·  порт {Settings.Phone.Port}  ·  {bluetooth}"
             : "Сервер не запущен";
         PhonePendingText.Text = _phone.Planner.PendingCount > 0
             ? $"{_phone.Planner.PendingCount} записей календаря и напоминаний ждут подключения"
@@ -1697,7 +1752,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Отправка одного или нескольких файлов на подключённый телефон.</summary>
-    private async void SendFilesToPhone(IEnumerable<string> paths)
+    private void SendFilesToPhone(IEnumerable<string> paths)
     {
         var device = _phone.Link.ConnectedDevices.FirstOrDefault();
         if (device is null)
@@ -1713,7 +1768,7 @@ public partial class MainWindow : Window
         }
         foreach (var path in list)
         {
-            await _phone.Files.SendAsync(device, path);
+            _phone.Files.Send(device, path);
             ShowPhoneStatus("Отправка: " + Path.GetFileName(path));
         }
         if (list.Count > 1) ShowPhoneStatus("В очередь на отправку: " + list.Count + " файлов");

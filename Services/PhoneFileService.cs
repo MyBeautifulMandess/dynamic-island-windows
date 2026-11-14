@@ -28,8 +28,9 @@ public sealed record FileTransferProgress(string Id, string Name, string Directi
 public sealed class PhoneFileService : IDisposable
 {
     private const int ChunkSize = 64 * 1024;
-    private const long AckEvery = 512 * 1024;
+    private const long AckEvery = 1024 * 1024;
     private const long MaxBytes = 2L * 1024 * 1024 * 1024;
+    private static readonly TimeSpan OfferTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan StalePartAge = TimeSpan.FromHours(24);
 
     private readonly PhoneLinkService _link;
@@ -130,41 +131,42 @@ public sealed class PhoneFileService : IDisposable
     /// <summary>
     /// Бинарный кадр не содержит id, поэтому он сопоставляется с последним
     /// описанием <c>file.chunk</c>. Канал однопоточный: порядок гарантирован.
+    /// Данные пишутся по смещению из описания, а не по своему счётчику: если
+    /// чанк потерялся или пришёл повторно, счётчик уехал бы и файл испортился.
     /// </summary>
     private void OnBinary(byte[] payload)
     {
         Incoming? incoming = null;
+        PendingChunk? pending = null;
         lock (_gate)
         {
-            var chunk = _pendingChunk;
+            pending = _pendingChunk;
             _pendingChunk = null;
-            if (chunk is { } pending) _incoming.TryGetValue(pending.Id, out incoming);
+            if (pending is { } value) _incoming.TryGetValue(value.Id, out incoming);
         }
-        if (payload.Length == 0 || incoming is null) return;
+        if (payload.Length == 0 || incoming is null || pending is not { } chunk) return;
         try
         {
-            // Дозапись по смещению защищает от повторной доставки потерянного чанка.
-            using var stream = new FileStream(incoming.Part, FileMode.OpenOrCreate, FileAccess.Write, FileShare.None);
-            if (incoming.Received == 0)
+            var offset = Math.Max(0, chunk.Offset);
+            if (offset > incoming.Total) { Fail(incoming.Id, "Смещение чанка вне файла"); return; }
+            using (var stream = new FileStream(incoming.Part, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read))
             {
-                stream.SetLength(0);
+                // Файл заранее растягивается до полного размера: Windows тогда
+                // выделяет место одним куском, а не по чанку, и проверка размера
+                // в конце работает без отдельного счётчика.
+                if (stream.Length != incoming.Total) stream.SetLength(incoming.Total);
+                stream.Seek(offset, SeekOrigin.Begin);
+                var room = (int)Math.Min(payload.Length, incoming.Total - offset);
+                if (room > 0) stream.Write(payload, 0, room);
             }
-            stream.Seek(incoming.Received, SeekOrigin.Begin);
-            var room = (int)Math.Min(payload.Length, incoming.Total - incoming.Received);
-            if (room <= 0)
-            {
-                stream.Dispose();
-                FinishIncoming(incoming.Id);
-                return;
-            }
-            stream.Write(payload, 0, room);
-            incoming.Received += room;
+            incoming.Received = Math.Max(incoming.Received, offset + Math.Min(payload.Length, incoming.Total - offset));
             var received = incoming.Received;
             var shouldAck = received % AckEvery < ChunkSize || received >= incoming.Total;
             if (shouldAck)
             {
                 var deviceId = FindDevice();
                 if (deviceId is not null) _link.SendTo(deviceId, "file.ack", new { id = incoming.Id, offset = received });
+                incoming.Reported = received;
             }
             Report(incoming.Id, incoming.Name, "phone-to-pc", received, incoming.Total);
         }
@@ -180,16 +182,14 @@ public sealed class PhoneFileService : IDisposable
         }
         try
         {
-            if (incoming.Received < incoming.Total && File.Exists(incoming.Part))
+            // Файл заранее растянут до полного размера, поэтому длина на диске
+            // ничего не говорит: полноту даёт только счётчик принятых байт.
+            if (incoming.Received < incoming.Total)
             {
-                var length = new FileInfo(incoming.Part).Length;
-                if (length < incoming.Total)
-                {
-                    Diagnostics.Log($"Файлы: «{incoming.Name}» недополучен ({length}/{incoming.Total})");
-                    File.Delete(incoming.Part);
-                    Fail(id, "Передача прервалась — файл не сохранён");
-                    return;
-                }
+                Diagnostics.Log($"Файлы: «{incoming.Name}» недополучен ({incoming.Received}/{incoming.Total})");
+                TryDelete(incoming.Part);
+                Fail(id, "Передача прервалась — файл не сохранён");
+                return;
             }
             if (File.Exists(incoming.Part))
                 File.Move(incoming.Part, incoming.Target, true);
@@ -212,9 +212,8 @@ public sealed class PhoneFileService : IDisposable
         try { if (File.Exists(incoming.Part)) File.Delete(incoming.Part); } catch { }
         Fail(id, "Передача отменена");
     }
-
     /// <summary>Отправка файла с компьютера на телефон.</summary>
-    public async Task SendAsync(string deviceId, string path)
+    public void Send(string deviceId, string path)
     {
         var name = SafeName(Path.GetFileName(path));
         long size;
@@ -229,7 +228,18 @@ public sealed class PhoneFileService : IDisposable
         lock (_gate) _outgoing[id] = outgoing;
         _link.SendTo(deviceId, "file.offer", new { id, name, size, mime = "application/octet-stream", dir = "pc-to-phone" });
         Report(id, name, "pc-to-phone", 0, size);
-        await Task.CompletedTask;
+
+        // Телефон мог не ответить вовсе (нет разрешения, занят): без таймаута
+        // передача висела бы в списке вечно.
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(OfferTimeout);
+            bool pending;
+            lock (_gate) pending = _outgoing.ContainsKey(id) && !_outgoing[id].Started;
+            if (!pending) return;
+            Fail(id, "Телефон не ответил на предложение файла");
+            _link.SendTo(deviceId, "file.cancel", new { id, reason = "timeout" });
+        });
     }
 
     /// <summary>
@@ -271,13 +281,15 @@ public sealed class PhoneFileService : IDisposable
                 if (read <= 0) break;
                 var chunk = new byte[read];
                 Buffer.BlockCopy(buffer, 0, chunk, 0, read);
-                _link.SendChunk(outgoing.DeviceId, id, offset, chunk);
+                // Ждём отправки: без этого чанки копились в памяти быстрее, чем
+                // уходили в сокет, и на большом файле канал захлёбывался.
+                await _link.SendChunkAsync(outgoing.DeviceId, id, offset, chunk);
                 offset += read;
                 lock (_gate) outgoing.Offset = offset;
                 Report(id, outgoing.Name, "pc-to-phone", offset, outgoing.Total);
-                if (offset % AckEvery < ChunkSize) await Task.Delay(15);
             }
             _link.SendTo(outgoing.DeviceId, "file.done", new { id });
+            lock (_gate) _outgoing.Remove(id);
         }
         catch (Exception ex)
         {
@@ -288,20 +300,27 @@ public sealed class PhoneFileService : IDisposable
 
     public void Cancel(string id)
     {
+        Outgoing? cancelled = null;
         lock (_gate)
         {
             if (_outgoing.Remove(id, out var outgoing))
             {
-                _link.SendTo(outgoing.DeviceId, "file.cancel", new { id, reason = "user" });
-                Failed?.Invoke("Отправка отменена");
-                return;
+                cancelled = outgoing;
             }
-            if (_incoming.Remove(id, out var incoming))
+            else if (_incoming.Remove(id, out var incoming))
             {
-                try { if (File.Exists(incoming.Part)) File.Delete(incoming.Part); } catch { }
+                TryDelete(incoming.Part);
                 Failed?.Invoke("Приём отменён");
             }
         }
+        if (cancelled is null) return;
+        _link.SendTo(cancelled.DeviceId, "file.cancel", new { id, reason = "user" });
+        Failed?.Invoke("Отправка отменена");
+    }
+
+    private static void TryDelete(string path)
+    {
+        try { if (File.Exists(path)) File.Delete(path); } catch { }
     }
 
     private string? FindDevice() => _link.ConnectedDevices.FirstOrDefault();
@@ -415,6 +434,9 @@ public sealed class PhoneFileService : IDisposable
         public string Part { get; } = part;
         public long Total { get; } = total;
         public long Received { get; set; } = received;
+
+        /// <summary>Сколько уже подтверждено телефону — чтобы не слать ack на каждый чанк.</summary>
+        public long Reported { get; set; }
     }
 
     private sealed class Outgoing(string id, string name, string path, long total, string deviceId)
